@@ -1,0 +1,39 @@
+[package]
+name = "trackify"
+version = "0.1.0"
+description = "Suivi du temps multi-projets"
+edition = "2024"
+
+[lib]
+name = "trackify_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+trackify-core = { path = "../crates/core" }
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri-plugin-opener = "2"
+tauri-plugin-autostart = "2"
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-single-instance = "2"
+serde = { workspace = true }
+serde_json = "1"
+chrono = { workspace = true }
+thiserror = { workspace = true }
+uuid = { version = "1", features = ["v7"] }
+tokio = { version = "1", features = ["sync", "time", "macros", "rt"] }
+sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "sqlite", "migrate", "derive", "macros"] }
+specta = { version = "=2.0.0-rc.26", features = ["derive"] }
+specta-typescript = "=0.0.13"
+tauri-specta = { version = "=2.0.0-rc.26", features = ["derive", "typescript"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_UI_Input_KeyboardAndMouse", "Win32_System_SystemInformation"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+user-idle = "0.6"

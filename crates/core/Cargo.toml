@@ -1,0 +1,12 @@
+[package]
+name = "trackify-core"
+version = "0.1.0"
+edition = "2024"
+description = "Logique métier pure de Trackify (sans dépendance Tauri)"
+
+[dependencies]
+chrono = { workspace = true }
+serde = { workspace = true }
+
+[dev-dependencies]
+chrono-tz = { workspace = true }

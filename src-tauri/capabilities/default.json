@@ -1,0 +1,15 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Fenêtres de l'application (principale, sélecteur rapide, rappel)",
+  "windows": [
+    "main",
+    "palette",
+    "reminder"
+  ],
+  "permissions": [
+    "core:default",
+    "opener:default",
+    "core:window:allow-start-dragging"
+  ]
+}

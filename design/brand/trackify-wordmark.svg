@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="180" viewBox="0 0 760 180">
+  <g transform="translate(12 12) scale(.60)">
+    <rect x="42" y="112" width="48" height="104" rx="24" fill="#9B91FF"/>
+    <rect x="108" y="58" width="48" height="158" rx="24" fill="#4F5BD5"/>
+    <circle cx="190" cy="54" r="25" fill="#FF4D61"/>
+  </g>
+  <text x="170" y="119" font-family="Inter, SF Pro Display, Helvetica Neue, Arial, sans-serif"
+        font-size="82" font-weight="650" letter-spacing="-3" fill="#171923">Trackify</text>
+</svg>
