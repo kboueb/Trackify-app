@@ -91,6 +91,32 @@ pub async fn set_ended(db: impl SqliteExecutor<'_>, id: &str, ended_at: i64, now
     Ok(sqlx::query_as(sql).bind(ended_at).bind(now).bind(id).fetch_one(db).await?)
 }
 
+/// Remplace projet, horaires et note d'une entrée.
+pub async fn update(
+    db: impl SqliteExecutor<'_>,
+    id: &str,
+    project_id: &str,
+    started_at: i64,
+    ended_at: Option<i64>,
+    note: &str,
+    now: i64,
+) -> AppResult<TimeEntry> {
+    let sql = concat!(
+        "UPDATE time_entries SET project_id = ?, started_at = ?, ended_at = ?, note = ?, updated_at = ?
+         WHERE id = ? AND deleted_at IS NULL RETURNING ", columns!(), ""
+    );
+    sqlx::query_as(sql)
+        .bind(project_id)
+        .bind(started_at)
+        .bind(ended_at)
+        .bind(note.trim())
+        .bind(now)
+        .bind(id)
+        .fetch_optional(db)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Entrée introuvable.".into()))
+}
+
 pub async fn set_note(db: impl SqliteExecutor<'_>, id: &str, note: &str, now: i64) -> AppResult<TimeEntry> {
     let sql = concat!(
         "UPDATE time_entries SET note = ?, updated_at = ?

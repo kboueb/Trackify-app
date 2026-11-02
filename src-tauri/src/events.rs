@@ -27,3 +27,12 @@ pub struct IdleChanged;
 /// Un rappel vient d'être affiché dans la fenêtre de rappel.
 #[derive(Debug, Clone, Serialize, Deserialize, Type, Event)]
 pub struct ReminderShown;
+
+/// L'utilisateur veut revoir sa journée (rappel de fin de journée) : la fenêtre
+/// principale affiche la journée du jour.
+#[derive(Debug, Clone, Serialize, Deserialize, Type, Event)]
+pub struct ReviewRequested;
+
+/// Le suivi d'activité a été mis en pause ou relancé (depuis le tray ou les réglages).
+#[derive(Debug, Clone, Serialize, Deserialize, Type, Event)]
+pub struct SettingsChanged;

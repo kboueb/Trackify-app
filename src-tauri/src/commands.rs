@@ -1,6 +1,10 @@
 //! Commandes exposées au frontend. Elles restent fines : validation et SQL
 //! sont dans `db`, la logique dans `services`.
 
+use std::path::PathBuf;
+
+use serde::Serialize;
+use specta::Type;
 use tauri::{AppHandle, State};
 use tauri_plugin_autostart::ManagerExt;
 use tauri_specta::Event;
@@ -8,21 +12,25 @@ use tauri_specta::Event;
 use crate::{
     AppState,
     db::{
-        entries,
+        activity, entries,
         models::{Project, ProjectInput, TimeEntry},
         now_ms, projects,
         idle::{self, IdlePeriod},
         settings::{self, ReminderSettings, Settings},
     },
     error::{AppError, AppResult},
-    events::IdleChanged,
+    events::{IdleChanged, ReviewRequested},
     notify, services,
     services::{
+        activity::UnassignedBlock,
+        backup,
+        entries::EntryInput,
         idle::IdleResolution,
         presence::{Presence, ReminderAction, ReminderView, SNOOZE},
+        report::{self, ReportRow},
         timer,
     },
-    shortcut, windows,
+    platform, shortcut, windows,
 };
 
 #[tauri::command]
@@ -236,6 +244,165 @@ pub async fn reminder_action(
             timer::stop(&state.db, now_ms()).await?;
             notify::timer_changed(&app);
         }
+        ReminderAction::Review => {
+            windows::show_main(&app);
+            let _ = ReviewRequested.emit(&app);
+        }
     }
     Ok(())
+}
+
+// --- Revue de journée -------------------------------------------------------------
+
+/// Crée (`id` absent) ou modifie une entrée ; les entrées recouvertes sont ajustées.
+#[tauri::command]
+#[specta::specta]
+pub async fn save_entry(app: AppHandle, state: State<'_, AppState>, id: Option<String>, input: EntryInput) -> AppResult<TimeEntry> {
+    let entry = services::entries::save(&state.db, id.as_deref(), input, now_ms()).await?;
+    notify::timer_changed(&app);
+    Ok(entry)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn split_entry(app: AppHandle, state: State<'_, AppState>, id: String, at: i64) -> AppResult<()> {
+    services::entries::split(&state.db, &id, at, now_ms()).await?;
+    notify::timer_changed(&app);
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn merge_entries(app: AppHandle, state: State<'_, AppState>, ids: Vec<String>) -> AppResult<TimeEntry> {
+    let entry = services::entries::merge(&state.db, &ids, now_ms()).await?;
+    notify::timer_changed(&app);
+    Ok(entry)
+}
+
+/// Temps actif sans projet sur `[from, to)`.
+#[tauri::command]
+#[specta::specta]
+pub async fn list_unassigned(state: State<'_, AppState>, from: i64, to: i64) -> AppResult<Vec<UnassignedBlock>> {
+    services::activity::unassigned(&state.db, from, to, now_ms()).await
+}
+
+// --- Projets : clients ------------------------------------------------------------
+
+/// Renomme un client sur tous ses projets. Renvoie le nombre de projets modifiés.
+#[tauri::command]
+#[specta::specta]
+pub async fn rename_client(app: AppHandle, state: State<'_, AppState>, from: String, to: String) -> AppResult<u32> {
+    let count = projects::rename_client(&state.db, &from, &to, now_ms()).await?;
+    notify::projects_changed(&app);
+    Ok(count as u32)
+}
+
+// --- Rapports ---------------------------------------------------------------------
+
+#[tauri::command]
+#[specta::specta]
+pub async fn get_report(state: State<'_, AppState>, from: i64, to: i64, rounding: u32) -> AppResult<Vec<ReportRow>> {
+    report::rows(&state.db, from, to, rounding, now_ms()).await
+}
+
+/// Écrit le CSV à `path` (choisi par l'utilisateur). Renvoie le nombre de lignes.
+#[tauri::command]
+#[specta::specta]
+pub async fn export_csv(state: State<'_, AppState>, from: i64, to: i64, rounding: u32, path: String) -> AppResult<u32> {
+    let count = report::export_csv(&state.db, from, to, rounding, &PathBuf::from(path), now_ms()).await?;
+    Ok(count as u32)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn set_rounding(state: State<'_, AppState>, rounding: u32) -> AppResult<Settings> {
+    report::check_rounding(rounding)?;
+    let mut current = settings::load(&state.db).await?;
+    current.rounding_min = rounding;
+    settings::save(&state.db, &current).await?;
+    Ok(current)
+}
+
+// --- Suivi d'activité -------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ActivityStatus {
+    pub enabled: bool,
+    /// macOS : permission « Enregistrement de l'écran » accordée (titres de fenêtres).
+    pub titles_allowed: bool,
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn activity_status(state: State<'_, AppState>) -> AppResult<ActivityStatus> {
+    let enabled = settings::load(&state.db).await?.activity_enabled;
+    Ok(ActivityStatus { enabled, titles_allowed: platform::window::titles_allowed() })
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn set_activity_enabled(app: AppHandle, state: State<'_, AppState>, enabled: bool) -> AppResult<Settings> {
+    let current = services::activity::set_enabled(&state.db, enabled).await?;
+    notify::settings_changed(&app);
+    Ok(current)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn request_activity_permission() {
+    platform::window::request_titles();
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn clear_activity(state: State<'_, AppState>) -> AppResult<()> {
+    activity::clear(&state.db).await
+}
+
+// --- Sauvegardes ------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct BackupInfo {
+    pub dir: String,
+    pub custom: bool,
+    /// Nom du fichier de la sauvegarde la plus récente.
+    pub latest: Option<String>,
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn backup_info(app: AppHandle, state: State<'_, AppState>) -> AppResult<BackupInfo> {
+    let custom = settings::load(&state.db).await?.backup_dir;
+    let dir = backup::dir(&app, custom.as_deref())?;
+    Ok(BackupInfo { dir: dir.to_string_lossy().into_owned(), custom: custom.is_some(), latest: backup::latest(&dir) })
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn backup_now(app: AppHandle, state: State<'_, AppState>) -> AppResult<String> {
+    let custom = settings::load(&state.db).await?.backup_dir;
+    let dir = backup::dir(&app, custom.as_deref())?;
+    let path = backup::run(&state.db, &dir, chrono::Local::now().date_naive()).await?;
+    Ok(path.to_string_lossy().into_owned())
+}
+
+/// `None` : revenir au dossier par défaut.
+#[tauri::command]
+#[specta::specta]
+pub async fn set_backup_dir(state: State<'_, AppState>, dir: Option<String>) -> AppResult<Settings> {
+    let mut current = settings::load(&state.db).await?;
+    current.backup_dir = dir.filter(|d| !d.trim().is_empty());
+    settings::save(&state.db, &current).await?;
+    Ok(current)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn reveal_backups(app: AppHandle, state: State<'_, AppState>) -> AppResult<()> {
+    let custom = settings::load(&state.db).await?.backup_dir;
+    let dir = backup::dir(&app, custom.as_deref())?;
+    std::fs::create_dir_all(&dir).map_err(|e| AppError::Internal(e.to_string()))?;
+    tauri_plugin_opener::open_path(&dir, None::<&str>).map_err(|e| AppError::Internal(e.to_string()))
 }

@@ -1,19 +1,20 @@
-import { format } from "date-fns";
+import { addDays, format } from "date-fns";
 import { fr } from "date-fns/locale";
-import { Play, Search, Square, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Play, Plus, Search, Sparkles, Square } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import type { Project, TimeEntry } from "../bindings";
-import { ConfirmButton } from "../components/ConfirmButton";
+import { events, type Project, type TimeEntry, type UnassignedBlock } from "../bindings";
+import { EntryEditor } from "../components/EntryEditor";
 import { ColorDot } from "../components/ProjectLabel";
 import {
-  useDeleteEntry,
   useEntries,
   useProjects,
   useRunning,
+  useSaveEntry,
   useSetEntryNote,
   useSettings,
   useStartTimer,
   useStopTimer,
+  useUnassigned,
 } from "../hooks/queries";
 import { useNow } from "../hooks/useNow";
 import { dayWindow, segments } from "../lib/daybar";
@@ -31,9 +32,18 @@ export function TimerPage({ onManageProjects }: { onManageProjects: () => void }
   const { data: allProjects = [] } = useProjects(true);
   const byId = useMemo(() => new Map(allProjects.map((p) => [p.id, p])), [allProjects]);
 
-  const dayKey = new Date(now).toDateString();
-  const [from, to] = useMemo(() => dayRange(new Date(now)), [dayKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Jour affiché, relatif à aujourd'hui (0 = aujourd'hui) : suit le passage de minuit.
+  const [offset, setOffset] = useState(0);
+  const today = offset === 0;
+  const dayKey = `${new Date(now).toDateString()}|${offset}`;
+  const [from, to] = useMemo(() => dayRange(addDays(new Date(now), offset)), [dayKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const { data: entries = [] } = useEntries(from, to);
+
+  // Rappel de fin de journée : retour sur aujourd'hui.
+  useEffect(() => {
+    const unlisten = events.reviewRequested.listen(() => setOffset(0));
+    return () => void unlisten.then((u) => u());
+  }, []);
 
   const totals = useMemo(() => {
     const map = new Map<string, number>();
@@ -49,10 +59,32 @@ export function TimerPage({ onManageProjects }: { onManageProjects: () => void }
   return (
     <div className="page">
       <header className="page-head">
-        <h1>Aujourd'hui</h1>
-        <span className="muted">{format(now, "EEEE d MMMM", { locale: fr })}</span>
+        <h1>{offset === 0 ? "Aujourd'hui" : offset === -1 ? "Hier" : format(from, "EEEE d", { locale: fr })}</h1>
+        <span className="muted">{format(from, offset < -6 ? "EEEE d MMMM yyyy" : "EEEE d MMMM", { locale: fr })}</span>
+        <div className="actions day-nav">
+          {!today && (
+            <button type="button" className="btn btn-ghost" onClick={() => setOffset(0)}>
+              Aujourd'hui
+            </button>
+          )}
+          <button type="button" className="icon-btn" aria-label="Jour précédent" title="Jour précédent" onClick={() => setOffset((o) => o - 1)}>
+            <ChevronLeft size={16} />
+          </button>
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label="Jour suivant"
+            title="Jour suivant"
+            disabled={today}
+            onClick={() => setOffset((o) => Math.min(0, o + 1))}
+          >
+            <ChevronRight size={16} />
+          </button>
+        </div>
       </header>
 
+      {today && (
+        <>
       <Hero
         running={running ?? null}
         project={running ? byId.get(running.projectId) : undefined}
@@ -70,8 +102,10 @@ export function TimerPage({ onManageProjects }: { onManageProjects: () => void }
         onPick={(id) => start.mutate(id)}
         onManageProjects={onManageProjects}
       />
+        </>
+      )}
 
-      <Day entries={entries} byId={byId} totals={totals} from={from} to={to} now={now} />
+      <Day entries={entries} projects={allProjects} byId={byId} totals={totals} from={from} to={to} now={now} />
     </div>
   );
 }
@@ -252,8 +286,11 @@ function ProjectPicker({
   );
 }
 
+type Editing = { entry?: TimeEntry; defaults?: { projectId?: string; startedAt?: number; endedAt?: number } };
+
 function Day({
   entries,
+  projects,
   byId,
   totals,
   from,
@@ -261,20 +298,44 @@ function Day({
   now,
 }: {
   entries: TimeEntry[];
+  projects: Project[];
   byId: Map<string, Project>;
   totals: Map<string, number>;
   from: number;
   to: number;
   now: number;
 }) {
-  const remove = useDeleteEntry();
+  const [editing, setEditing] = useState<Editing | null>(null);
+  const { data: unassigned = [] } = useUnassigned(from, to);
   const total = [...totals.values()].reduce((a, b) => a + b, 0);
-  const visible = dayWindow(entries, from, now);
+  const visible = dayWindow([...entries, ...unassigned], from, now);
   const [fromHour, toHour] = visible;
   const hours = toHour - fromHour;
   const segs = segments(entries, from, visible, now);
+  const gaps = segments(
+    unassigned.map((u) => ({ id: `gap-${u.startedAt}`, projectId: "", startedAt: u.startedAt, endedAt: u.endedAt })),
+    from,
+    visible,
+    now,
+  );
   const nowPct = (((now - from) / HOUR - fromHour) / hours) * 100;
   const colorOf = (projectId: string) => byId.get(projectId)?.color ?? "#999999";
+  const sorted = [...entries].sort((a, b) => a.startedAt - b.startedAt);
+
+  // Voisines immédiates du même projet : candidates à la fusion.
+  const mergeable = (entry: TimeEntry) => {
+    const i = sorted.findIndex((e) => e.id === entry.id);
+    const same = (e: TimeEntry | undefined) => (e && e.projectId === entry.projectId ? e : undefined);
+    return { before: same(sorted[i - 1]), after: same(sorted[i + 1]) };
+  };
+
+  // Ajout manuel : par défaut, juste après la dernière entrée terminée de la journée.
+  const addDefaults = () => {
+    const finished = sorted.filter((e) => e.endedAt !== null);
+    const lastEnd = finished[finished.length - 1]?.endedAt ?? undefined;
+    const startedAt = lastEnd ?? Math.min(now, from + 9 * HOUR);
+    return { startedAt, endedAt: Math.min(now, startedAt + HOUR) };
+  };
 
   return (
     <section className="section">
@@ -283,17 +344,26 @@ function Day({
         <span className="aside num">
           <strong>{formatDuration(total)}</strong>
         </span>
+        <button type="button" className="btn btn-ghost small-btn" onClick={() => setEditing({ defaults: addDefaults() })}>
+          <Plus size={14} /> Ajouter une entrée
+        </button>
       </div>
 
       <div className="card">
         <div className="daybar">
           <div className="daybar-track" style={{ "--hour": `${100 / hours}%` } as CSSProperties}>
+            {gaps.map((g) => (
+              <div key={g.id} className="daybar-gap" style={{ left: `${g.left}%`, width: `${g.width}%` }} title="Activité sans projet" />
+            ))}
             {segs.map((s) => (
-              <div
+              <button
                 key={s.id}
+                type="button"
                 className={`daybar-seg${s.live ? " live" : ""}`}
                 style={{ left: `${s.left}%`, width: `${s.width}%`, background: colorOf(s.projectId) }}
                 title={byId.get(s.projectId)?.name}
+                aria-label={`Modifier l'entrée ${byId.get(s.projectId)?.name ?? ""}`}
+                onClick={() => setEditing({ entry: entries.find((e) => e.id === s.id) })}
               />
             ))}
             {nowPct > 0 && nowPct < 100 && <div className="daybar-now" style={{ left: `${nowPct}%` }} />}
@@ -322,33 +392,123 @@ function Day({
         )}
       </div>
 
+      {unassigned.length > 0 && <Unassigned blocks={unassigned} projects={projects} onAdjust={(defaults) => setEditing({ defaults })} />}
+
       {entries.length === 0 ? (
-        <div className="card empty">Rien d'enregistré aujourd'hui pour l'instant.</div>
+        <div className="card empty">Rien d'enregistré ce jour-là.</div>
       ) : (
         <ul className="card list">
-          {[...entries].reverse().map((e) => {
+          {[...sorted].reverse().map((e) => {
             const project = byId.get(e.projectId);
             return (
-              <li key={e.id} className="entry">
-                <ColorDot color={colorOf(e.projectId)} live={e.endedAt === null} />
-                <div className="entry-main">
-                  <span className="entry-name">{project?.name ?? "Projet supprimé"}</span>
-                  <span className="entry-note">{e.note || project?.client}</span>
-                </div>
-                <span className="entry-time">
-                  {formatTime(e.startedAt)} – {e.endedAt ? formatTime(e.endedAt) : "en cours"}
-                </span>
-                <span className="entry-duration">{formatDuration(durationWithin(e, from, to, now))}</span>
-                <span className="row-actions">
-                  <ConfirmButton label="Supprimer l'entrée" onConfirm={() => remove.mutate(e.id)}>
-                    <Trash2 size={14} />
-                  </ConfirmButton>
-                </span>
+              <li key={e.id}>
+                <button type="button" className="entry" onClick={() => setEditing({ entry: e })} title="Modifier, scinder, fusionner…">
+                  <ColorDot color={colorOf(e.projectId)} live={e.endedAt === null} />
+                  <span className="entry-main">
+                    <span className="entry-name">{project?.name ?? "Projet supprimé"}</span>
+                    <span className="entry-note">{e.note || project?.client}</span>
+                  </span>
+                  <span className="entry-time">
+                    {formatTime(e.startedAt)} – {e.endedAt ? formatTime(e.endedAt) : "en cours"}
+                  </span>
+                  <span className="entry-duration">{formatDuration(durationWithin(e, from, to, now))}</span>
+                </button>
               </li>
             );
           })}
         </ul>
       )}
+
+      {editing && (
+        <EntryEditor
+          entry={editing.entry}
+          defaults={editing.defaults}
+          day={editing.entry?.startedAt ?? from}
+          projects={projects}
+          mergeable={editing.entry ? mergeable(editing.entry) : undefined}
+          onClose={() => setEditing(null)}
+        />
+      )}
     </section>
+  );
+}
+
+/** Temps d'activité sans projet, à attribuer en un clic. */
+function Unassigned({
+  blocks,
+  projects,
+  onAdjust,
+}: {
+  blocks: UnassignedBlock[];
+  projects: Project[];
+  onAdjust: (defaults: { startedAt: number; endedAt: number }) => void;
+}) {
+  const total = blocks.reduce((sum, b) => sum + b.endedAt - b.startedAt, 0);
+  return (
+    <div className="card unassigned">
+      <div className="unassigned-head">
+        <Sparkles size={14} />
+        <strong>{formatDuration(total)} d'activité sans projet</strong>
+        <span className="muted small">d'après le suivi d'activité</span>
+      </div>
+      <ul className="list">
+        {blocks.map((b) => (
+          <UnassignedRow key={b.startedAt} block={b} projects={projects} onAdjust={onAdjust} />
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function UnassignedRow({
+  block,
+  projects,
+  onAdjust,
+}: {
+  block: UnassignedBlock;
+  projects: Project[];
+  onAdjust: (defaults: { startedAt: number; endedAt: number }) => void;
+}) {
+  const save = useSaveEntry();
+  const what = (block.titles.length ? block.titles : block.apps).map((t) => t.name).join(" · ");
+  const apps = block.apps.map((a) => a.name).join(", ");
+  return (
+    <li className="unassigned-row">
+      <span className="entry-time">
+        {formatTime(block.startedAt)} – {formatTime(block.endedAt)}
+      </span>
+      <span className="entry-main">
+        <span className="entry-name">{apps}</span>
+        <span className="entry-note" title={what}>
+          {what}
+        </span>
+      </span>
+      <span className="entry-duration">{formatDuration(block.endedAt - block.startedAt)}</span>
+      <select
+        className="input"
+        value=""
+        aria-label="Attribuer à un projet"
+        disabled={save.isPending}
+        onChange={(e) =>
+          e.target.value &&
+          save.mutate({
+            input: { projectId: e.target.value, startedAt: block.startedAt, endedAt: block.endedAt, note: "" },
+          })
+        }
+      >
+        <option value="">Attribuer à…</option>
+        {projects
+          .filter((p) => !p.archived)
+          .map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.client ? `${p.name} — ${p.client}` : p.name}
+            </option>
+          ))}
+      </select>
+      <button type="button" className="btn btn-ghost small-btn" onClick={() => onAdjust({ startedAt: block.startedAt, endedAt: block.endedAt })}>
+        Ajuster…
+      </button>
+      {save.error && <span className="error small">{errorMessage(save.error)}</span>}
+    </li>
   );
 }

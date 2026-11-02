@@ -1,5 +1,6 @@
 //! Accès à la base SQLite. Tout le SQL de l'application vit dans ce module.
 
+pub mod activity;
 pub mod entries;
 pub mod idle;
 pub mod models;

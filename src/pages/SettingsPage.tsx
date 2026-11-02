@@ -1,8 +1,16 @@
+import { open } from "@tauri-apps/plugin-dialog";
+import { ShieldAlert, ShieldCheck } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
-import type { ReminderSettings } from "../bindings";
+import { commands, type ReminderSettings } from "../bindings";
+import { ConfirmButton } from "../components/ConfirmButton";
 import {
+  useActivityStatus,
   useAutostart,
+  useBackupInfo,
+  useBackupNow,
+  useSetActivityEnabled,
   useSetAutostart,
+  useSetBackupDir,
   useSetReminderSettings,
   useSetShortcut,
   useSettings,
@@ -18,6 +26,8 @@ export function SettingsPage() {
         <h1>Réglages</h1>
       </header>
       <ReminderSettingsCard />
+      <ActivitySettings />
+      <BackupSettings />
       <GeneralSettings />
     </div>
   );
@@ -52,7 +62,7 @@ function ReminderSettingsCard() {
   const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
   const set = (patch: Partial<Reminders>) => setDraft({ ...draft, ...patch });
   const minutes = (value: string) => Math.max(0, Math.round(Number(value) || 0));
-  const time = (key: "activeFromMin" | "activeUntilMin") => (value: string) => {
+  const time = (key: "activeFromMin" | "activeUntilMin" | "reviewAtMin") => (value: string) => {
     const m = timeToMinutes(value);
     if (m !== null) set({ [key]: m });
   };
@@ -142,6 +152,23 @@ function ReminderSettingsCard() {
               aria-label="Jours ouvrés uniquement"
             />
           </Row>
+          <Row label="Revue de fin de journée" hint="Une invitation à vérifier et compléter tes temps, une fois par jour.">
+            <input
+              type="time"
+              className="input input-time"
+              disabled={!draft.reviewEnabled}
+              value={minutesToTime(draft.reviewAtMin)}
+              onChange={(e) => time("reviewAtMin")(e.target.value)}
+              aria-label="Heure de la revue de journée"
+            />
+            <input
+              type="checkbox"
+              className="switch"
+              checked={draft.reviewEnabled}
+              onChange={(e) => set({ reviewEnabled: e.target.checked })}
+              aria-label="Activer la revue de fin de journée"
+            />
+          </Row>
         </div>
         {(dirty || save.error) && (
           <div className="settings-footer">
@@ -154,6 +181,123 @@ function ReminderSettingsCard() {
             </button>
           </div>
         )}
+      </div>
+    </section>
+  );
+}
+
+function ActivitySettings() {
+  const { data: status } = useActivityStatus();
+  const setEnabled = useSetActivityEnabled();
+  const [cleared, setCleared] = useState(false);
+
+  return (
+    <section className="section">
+      <div className="section-head">
+        <h2>Suivi d'activité</h2>
+      </div>
+      <div className="card">
+        <div className="settings-group">
+          <Row
+            label="Noter l'app et la fenêtre actives"
+            hint="Toutes les 10 s, uniquement sur cet ordinateur, effacé après 30 jours. Sert à repérer le temps sans projet dans la revue de journée."
+          >
+            <input
+              type="checkbox"
+              className="switch"
+              checked={status?.enabled ?? false}
+              disabled={!status || setEnabled.isPending}
+              onChange={(e) => setEnabled.mutate(e.target.checked)}
+              aria-label="Activer le suivi d'activité"
+            />
+          </Row>
+          {isMac && status && (
+            <Row
+              label="Titres des fenêtres"
+              hint={
+                status.titlesAllowed
+                  ? "Autorisé : la revue montre le document ou l'onglet sur lequel tu travaillais."
+                  : "macOS demande l'autorisation « Enregistrement de l'écran » pour lire les titres (Trackify ne capture jamais l'écran). Sans elle, seul le nom de l'app est noté."
+              }
+            >
+              {status.titlesAllowed ? (
+                <span className="permission ok">
+                  <ShieldCheck size={15} /> Autorisé
+                </span>
+              ) : (
+                <button type="button" className="btn" onClick={() => void commands.requestActivityPermission()}>
+                  <ShieldAlert size={15} /> Autoriser…
+                </button>
+              )}
+            </Row>
+          )}
+          <Row label="Historique d'activité" hint={cleared ? "Effacé." : "Supprime tout ce qui a été noté jusqu'ici (tes entrées de temps ne bougent pas)."}>
+            <ConfirmButton
+              className="btn"
+              label="Effacer l'historique d'activité"
+              confirmLabel="Effacer ?"
+              onConfirm={() => void commands.clearActivity().then(() => setCleared(true))}
+            >
+              Effacer
+            </ConfirmButton>
+          </Row>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function BackupSettings() {
+  const { data: info } = useBackupInfo();
+  const backupNow = useBackupNow();
+  const setDir = useSetBackupDir();
+  const error = backupNow.error ?? setDir.error;
+
+  const choose = async () => {
+    const dir = await open({ directory: true, title: "Dossier des sauvegardes", defaultPath: info?.dir });
+    if (typeof dir === "string") setDir.mutate(dir);
+  };
+
+  return (
+    <section className="section">
+      <div className="section-head">
+        <h2>Sauvegardes</h2>
+      </div>
+      <div className="card">
+        <div className="settings-group">
+          <Row
+            label="Copie quotidienne de la base"
+            hint={
+              <>
+                Les 7 dernières sont gardées. Choisis un dossier iCloud Drive ou Dropbox pour les mettre à l'abri d'une
+                panne de disque.
+                <span className="backup-path" title={info?.dir}>
+                  {info?.dir}
+                </span>
+              </>
+            }
+          >
+            <button type="button" className="btn" onClick={() => void choose()}>
+              Choisir…
+            </button>
+            {info?.custom && (
+              <button type="button" className="btn btn-ghost" onClick={() => setDir.mutate(null)}>
+                Par défaut
+              </button>
+            )}
+          </Row>
+          <Row
+            label="Dernière sauvegarde"
+            hint={error ? <span className="error">{errorMessage(error)}</span> : (info?.latest ?? "Aucune pour l'instant.")}
+          >
+            <button type="button" className="btn btn-ghost" onClick={() => void commands.revealBackups()}>
+              Ouvrir le dossier
+            </button>
+            <button type="button" className="btn" disabled={backupNow.isPending} onClick={() => backupNow.mutate()}>
+              Sauvegarder maintenant
+            </button>
+          </Row>
+        </div>
       </div>
     </section>
   );

@@ -3,6 +3,7 @@ import type { TimeEntry } from "../bindings";
 
 export const MINUTE = 60_000;
 export const HOUR = 60 * MINUTE;
+export const DAY = 24 * HOUR;
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
@@ -61,4 +62,13 @@ export function timeToMinutes(value: string): number | null {
   if (!match) return null;
   const [h, m] = [Number(match[1]), Number(match[2])];
   return h < 24 && m < 60 ? h * 60 + m : null;
+}
+
+/** « 14:05 » le jour contenant `day` → horodatage local ; `null` si la saisie est invalide. */
+export function atTime(day: number, value: string): number | null {
+  const minutes = timeToMinutes(value);
+  if (minutes === null) return null;
+  const d = new Date(day);
+  d.setHours(Math.floor(minutes / 60), minutes % 60, 0, 0);
+  return d.getTime();
 }

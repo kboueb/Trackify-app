@@ -37,6 +37,8 @@ pub const SNOOZE: i64 = 60 * MINUTE;
 pub enum ReminderKind {
     NoTimer,
     CheckIn,
+    /// Fin de journée : revoir et compléter ses temps.
+    Review,
 }
 
 /// Contenu de la fenêtre de rappel.
@@ -61,6 +63,8 @@ pub enum ReminderAction {
     Switch,
     /// Arrêter le timer en cours.
     Stop,
+    /// Ouvrir la revue de la journée.
+    Review,
 }
 
 #[derive(Default)]
@@ -140,6 +144,12 @@ async fn step(app: &AppHandle, tracker: &mut IdleTracker, last_heartbeat: &mut i
         weekday: local.weekday().num_days_from_monday(),
     };
     let presence = app.state::<Presence>();
+    let day = i64::from(local.date_naive().num_days_from_ce());
+    if presence.reminders.lock().unwrap().review_due(&cfg, day, idle_ms, clock) {
+        let view = ReminderView { kind: ReminderKind::Review, project_name: None, project_color: None, started_at: None };
+        show(app, &presence, view);
+        return Ok(());
+    }
     let reminder = presence.reminders.lock().unwrap().tick(
         &cfg,
         now,
@@ -161,10 +171,14 @@ async fn step(app: &AppHandle, tracker: &mut IdleTracker, last_heartbeat: &mut i
         }
         _ => ReminderView { kind: ReminderKind::NoTimer, project_name: None, project_color: None, started_at: None },
     };
+    show(app, &presence, view);
+    Ok(())
+}
+
+fn show(app: &AppHandle, presence: &Presence, view: ReminderView) {
     *presence.current.lock().unwrap() = Some(view);
     let _ = ReminderShown.emit(app);
     windows::show_reminder(app);
-    Ok(())
 }
 
 /// Une absence attend une décision : on affiche la fenêtre principale qui pose la question.

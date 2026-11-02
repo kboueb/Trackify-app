@@ -1,4 +1,4 @@
-import { BellRing, Hourglass } from "lucide-react";
+import { BellRing, CalendarCheck, Hourglass } from "lucide-react";
 import { useEffect, useState, type CSSProperties } from "react";
 import { commands, events, type ReminderAction, type ReminderView } from "./bindings";
 import { formatDuration } from "./lib/time";
@@ -26,6 +26,30 @@ export function Reminder() {
   }, [view]);
 
   if (!view) return null;
+
+  if (view.kind === "review") {
+    return (
+      <div className="reminder">
+        <div className="reminder-head">
+          <span className="reminder-icon" aria-hidden>
+            <CalendarCheck size={16} />
+          </span>
+          <div className="reminder-text">
+            <strong>Fin de journée</strong>
+            <span className="muted small">Un coup d'œil à tes temps avant de partir ?</span>
+          </div>
+        </div>
+        <div className="reminder-actions">
+          <button type="button" className="btn btn-primary" onClick={() => act("review")}>
+            Revoir ma journée
+          </button>
+          <button type="button" className="btn btn-ghost" onClick={() => act("dismiss")}>
+            Plus tard
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (view.kind === "checkIn") {
     const elapsed = view.startedAt ? formatDuration(Date.now() - view.startedAt) : "";

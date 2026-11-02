@@ -775,6 +775,26 @@ select.input {
   bottom: 3px;
   border-radius: 4px;
   min-width: 2px;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+.daybar-seg:hover {
+  filter: brightness(1.1);
+}
+
+/* Activité sans projet : hachures discrètes sous les entrées. */
+.daybar-gap {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  border-radius: 4px;
+  background: repeating-linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--text-3) 35%, transparent) 0 3px,
+    transparent 3px 7px
+  );
 }
 
 .daybar-seg.live {
@@ -834,6 +854,14 @@ select.input {
   gap: 12px;
   padding: 9px 10px;
   border-radius: var(--radius-sm);
+  /* Ligne cliquable : bouton sans apparence de bouton. */
+  width: 100%;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
 .entry:hover {
@@ -1365,4 +1393,280 @@ body.reminder-window #root {
 .combobox-check {
   margin-left: auto;
   color: var(--accent);
+}
+
+/* Navigation entre les jours */
+.day-nav {
+  gap: 4px;
+}
+
+.icon-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.small-btn {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 12.5px;
+}
+
+/* Temps sans projet (suivi d'activité) */
+.unassigned {
+  margin-bottom: 12px;
+  padding: 12px 12px 6px;
+  border-style: dashed;
+}
+
+.unassigned-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px 6px;
+  color: var(--text-2);
+}
+
+.unassigned-head strong {
+  color: var(--text);
+}
+
+.unassigned-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 4px;
+}
+
+.unassigned-row select {
+  width: 170px;
+  height: 30px;
+}
+
+/* Éditeur d'entrée */
+.entry-editor {
+  width: min(520px, 100%);
+}
+
+.entry-editor .times {
+  grid-template-columns: 1fr 1fr auto;
+  align-items: end;
+}
+
+.entry-editor-duration {
+  min-width: 70px;
+  padding-bottom: 8px;
+  color: var(--text-2);
+  text-align: right;
+}
+
+.entry-editor-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.entry-editor-tools .tool {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-2);
+}
+
+.entry-editor-tools .tool .input {
+  width: 110px;
+}
+
+.tool-btn {
+  justify-content: flex-start;
+}
+
+.form-actions .spacer {
+  flex: 1;
+}
+
+.success {
+  color: #2f8a4a;
+  margin: 0;
+}
+
+/* Rapports */
+.segmented {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-3);
+}
+
+.segmented button {
+  height: 28px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.segmented button.on {
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 600;
+  box-shadow: var(--shadow-sm);
+}
+
+.report-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.report-toolbar .day-nav {
+  display: flex;
+  align-items: center;
+}
+
+.report-title {
+  margin: 0 8px;
+  font-weight: 600;
+}
+
+.report-title::first-letter {
+  text-transform: uppercase;
+}
+
+.report-rounding {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+
+.report-rounding select {
+  width: auto;
+  height: 30px;
+}
+
+.report-card {
+  padding: 4px 0;
+  overflow-x: auto;
+}
+
+.report-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.report-table th,
+.report-table td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.report-table thead th {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-3);
+  text-transform: capitalize;
+}
+
+.report-table .num {
+  text-align: right;
+}
+
+.report-table thead th.today {
+  color: var(--accent);
+}
+
+.report-table tbody th {
+  font-weight: 500;
+}
+
+.report-table tfoot th,
+.report-table tfoot td {
+  border-bottom: 0;
+  font-weight: 600;
+}
+
+.report-table .strong {
+  font-weight: 650;
+}
+
+.report-project {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.report-notes {
+  white-space: normal !important;
+  color: var(--text-2);
+}
+
+.report-hint {
+  margin-top: 12px;
+}
+
+/* En-tête de groupe client : actions au survol */
+.client-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+}
+
+.client-actions {
+  display: inline-flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+
+.client-head:hover .client-actions,
+.client-head:focus-within .client-actions {
+  opacity: 1;
+}
+
+.client-actions .icon-btn {
+  width: 24px;
+  height: 24px;
+}
+
+.client-rename {
+  width: 240px;
+  height: 26px;
+  font-size: 12.5px;
+}
+
+.permission {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.permission.ok {
+  color: #2f8a4a;
+}
+
+.backup-path {
+  display: block;
+  margin-top: 4px;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 11px;
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

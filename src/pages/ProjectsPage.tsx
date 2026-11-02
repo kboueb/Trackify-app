@@ -6,14 +6,12 @@ import type { Project } from "../bindings";
 import { ClientCombobox } from "../components/ClientCombobox";
 import { ConfirmButton } from "../components/ConfirmButton";
 import { ColorDot } from "../components/ProjectLabel";
-import { useArchiveProject, useDeleteProject, useProjects, useSaveProject } from "../hooks/queries";
+import { useArchiveProject, useDeleteProject, useProjects, useRenameClient, useSaveProject } from "../hooks/queries";
 import { knownClients } from "../lib/clients";
+import { PROJECT_COLORS } from "../lib/colors";
 import { errorMessage } from "../lib/errors";
 
-const PALETTE = [
-  "#e5484d", "#f76b15", "#ffc53d", "#46a758", "#12a594",
-  "#0090ff", "#3e63dd", "#8e4ec6", "#d6409f", "#8d8d8d",
-];
+const PALETTE = PROJECT_COLORS;
 
 type Draft = { id?: string; name: string; client: string; color: string };
 
@@ -32,7 +30,11 @@ export function ProjectsPage() {
     return [...map].sort(([a], [b]) => Number(a === "") - Number(b === "") || a.localeCompare(b, "fr"));
   }, [projects]);
 
-  const newDraft = (): Draft => ({ name: "", client: "", color: PALETTE[projects.length % PALETTE.length] });
+  const newDraft = (client = ""): Draft => ({
+    name: "",
+    client,
+    color: clientColor(projects, client) ?? PALETTE[projects.length % PALETTE.length],
+  });
 
   return (
     <div className="page">
@@ -64,7 +66,7 @@ export function ProjectsPage() {
       <div className="client-groups">
         {groups.map(([client, items]) => (
           <section key={client} className="client-group">
-            <h3>{client || "Sans client"}</h3>
+            <ClientHeader client={client} count={items.length} onAdd={() => setDraft(newDraft(client))} />
             <ul className="card list">
               {items.map((p) =>
                 draft?.id === p.id ? (
@@ -85,6 +87,77 @@ export function ProjectsPage() {
           </section>
         ))}
       </div>
+    </div>
+  );
+}
+
+/** Couleur du projet le plus récent de ce client, pour garder une teinte par client. */
+function clientColor(projects: Project[], client: string): string | undefined {
+  if (!client) return undefined;
+  return projects
+    .filter((p) => p.client === client)
+    .sort((a, b) => (b.lastUsedAt ?? b.createdAt) - (a.lastUsedAt ?? a.createdAt))[0]?.color;
+}
+
+/** Titre d'un groupe : ajouter un projet à ce client, ou renommer le client partout. */
+function ClientHeader({ client, count, onAdd }: { client: string; count: number; onAdd: () => void }) {
+  const [renaming, setRenaming] = useState(false);
+  const [value, setValue] = useState(client);
+  const rename = useRenameClient();
+
+  const submit = () => {
+    const to = value.trim();
+    if (!to || to === client) return setRenaming(false);
+    rename.mutate({ from: client, to }, { onSuccess: () => setRenaming(false) });
+  };
+
+  return (
+    <div className="client-head">
+      {renaming ? (
+        <input
+          className="input client-rename"
+          autoFocus
+          value={value}
+          aria-label={`Nouveau nom pour ${client}`}
+          onChange={(e) => setValue(e.target.value)}
+          onBlur={submit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") submit();
+            if (e.key === "Escape") {
+              setValue(client);
+              setRenaming(false);
+            }
+          }}
+        />
+      ) : (
+        <h3>{client || "Sans client"}</h3>
+      )}
+      <span className="client-actions">
+        {client && !renaming && (
+          <button
+            type="button"
+            className="icon-btn"
+            title={`Renommer « ${client} » sur ses ${count} projet${count > 1 ? "s" : ""}`}
+            aria-label={`Renommer le client ${client}`}
+            onClick={() => {
+              setValue(client);
+              setRenaming(true);
+            }}
+          >
+            <Pencil size={13} />
+          </button>
+        )}
+        <button
+          type="button"
+          className="icon-btn"
+          title={client ? `Nouveau projet pour ${client}` : "Nouveau projet sans client"}
+          aria-label={client ? `Nouveau projet pour ${client}` : "Nouveau projet sans client"}
+          onClick={onAdd}
+        >
+          <Plus size={14} />
+        </button>
+      </span>
+      {rename.error && <span className="error small">{errorMessage(rename.error)}</span>}
     </div>
   );
 }
@@ -133,6 +206,8 @@ function ProjectRow({
 
 function ProjectForm({ draft, onDone }: { draft: Draft; onDone: () => void }) {
   const [value, setValue] = useState(draft);
+  // Tant que la couleur n'a pas été choisie à la main, un nouveau projet prend celle de son client.
+  const [colorTouched, setColorTouched] = useState(Boolean(draft.id));
   const save = useSaveProject();
   // Archivés compris : un client peut n'avoir que des projets archivés.
   const { data: allProjects = [] } = useProjects(true);
@@ -164,7 +239,13 @@ function ProjectForm({ draft, onDone }: { draft: Draft; onDone: () => void }) {
           <ClientCombobox
             value={value.client}
             clients={clients}
-            onChange={(client) => setValue((v) => ({ ...v, client }))}
+            onChange={(client) =>
+              setValue((v) => ({
+                ...v,
+                client,
+                color: colorTouched ? v.color : (clientColor(allProjects, client) ?? draft.color),
+              }))
+            }
           />
         </div>
       </div>
@@ -178,14 +259,20 @@ function ProjectForm({ draft, onDone }: { draft: Draft; onDone: () => void }) {
             aria-label={c}
             className={`swatch${value.color === c ? " selected" : ""}`}
             style={{ background: c }}
-            onClick={() => setValue({ ...value, color: c })}
+            onClick={() => {
+              setColorTouched(true);
+              setValue({ ...value, color: c });
+            }}
           />
         ))}
         <input
           type="color"
           className="swatch-custom"
           value={value.color}
-          onChange={(e) => setValue({ ...value, color: e.target.value })}
+          onChange={(e) => {
+            setColorTouched(true);
+            setValue({ ...value, color: e.target.value });
+          }}
           aria-label="Couleur personnalisée"
         />
       </div>

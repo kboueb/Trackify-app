@@ -108,6 +108,31 @@ pub async fn update(db: impl SqliteExecutor<'_>, id: &str, input: ProjectInput, 
         .ok_or_else(|| AppError::NotFound("Projet introuvable.".into()))
 }
 
+/// Renomme un client sur tous ses projets (archivés compris). Renommer vers un client
+/// existant fusionne les deux. Renvoie le nombre de projets modifiés.
+pub async fn rename_client(db: impl SqliteExecutor<'_>, from: &str, to: &str, now: i64) -> AppResult<u64> {
+    let to = to.trim();
+    if from.is_empty() {
+        return Err(AppError::Validation("Choisis un client à renommer.".into()));
+    }
+    let res = sqlx::query("UPDATE projects SET client = ?, updated_at = ? WHERE client = ? AND deleted_at IS NULL")
+        .bind(to)
+        .bind(now)
+        .bind(from)
+        .execute(db)
+        .await
+        .map_err(|e| {
+            if is_unique_violation(&e) {
+                AppError::Validation(format!(
+                    "« {to} » a déjà un projet du même nom qu'un projet de « {from} »."
+                ))
+            } else {
+                e.into()
+            }
+        })?;
+    Ok(res.rows_affected())
+}
+
 pub async fn set_archived(db: impl SqliteExecutor<'_>, id: &str, archived: bool, now: i64) -> AppResult<Project> {
     let sql = concat!(
         "UPDATE projects SET archived = ?, updated_at = ?

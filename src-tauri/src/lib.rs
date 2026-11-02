@@ -48,6 +48,22 @@ fn specta_builder() -> Builder<tauri::Wry> {
             commands::resolve_idle,
             commands::get_reminder,
             commands::reminder_action,
+            commands::save_entry,
+            commands::split_entry,
+            commands::merge_entries,
+            commands::list_unassigned,
+            commands::rename_client,
+            commands::get_report,
+            commands::export_csv,
+            commands::set_rounding,
+            commands::activity_status,
+            commands::set_activity_enabled,
+            commands::request_activity_permission,
+            commands::clear_activity,
+            commands::backup_info,
+            commands::backup_now,
+            commands::set_backup_dir,
+            commands::reveal_backups,
         ])
         .events(collect_events![
             events::TimerChanged,
@@ -56,6 +72,8 @@ fn specta_builder() -> Builder<tauri::Wry> {
             events::PaletteOpened,
             events::IdleChanged,
             events::ReminderShown,
+            events::ReviewRequested,
+            events::SettingsChanged,
         ])
         .error_handling(ErrorHandlingMode::Throw)
         .disable_serde_phases()
@@ -76,6 +94,7 @@ pub fn run() {
         // En premier : une seconde instance se contente de réafficher la première.
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| windows::show_main(app)))
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec![HIDDEN_ARG])))
         .plugin(shortcut::plugin())
         .invoke_handler(builder.invoke_handler())
@@ -110,6 +129,8 @@ pub fn run() {
             windows::create_palette(handle)?;
             windows::create_reminder(handle)?;
             services::presence::start(handle);
+            services::activity::start(handle);
+            services::backup::start(handle);
             if let Err(e) = shortcut::register(handle, &settings.shortcut) {
                 eprintln!("raccourci global : {e}");
             }

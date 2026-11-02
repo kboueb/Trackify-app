@@ -31,6 +31,27 @@ export const commands = {
 	resolveIdle: (id: string, resolution: IdleResolution) => __TAURI_INVOKE<null>("resolve_idle", { id, resolution }),
 	getReminder: () => __TAURI_INVOKE<ReminderView | null>("get_reminder"),
 	reminderAction: (action: ReminderAction) => __TAURI_INVOKE<null>("reminder_action", { action }),
+	/**  Crée (`id` absent) ou modifie une entrée ; les entrées recouvertes sont ajustées. */
+	saveEntry: (id: string | null, input: EntryInput) => __TAURI_INVOKE<TimeEntry>("save_entry", { id, input }),
+	splitEntry: (id: string, at: number) => __TAURI_INVOKE<null>("split_entry", { id, at }),
+	mergeEntries: (ids: string[]) => __TAURI_INVOKE<TimeEntry>("merge_entries", { ids }),
+	/**  Temps actif sans projet sur `[from, to)`. */
+	listUnassigned: (from: number, to: number) => __TAURI_INVOKE<UnassignedBlock[]>("list_unassigned", { from, to }),
+	/**  Renomme un client sur tous ses projets. Renvoie le nombre de projets modifiés. */
+	renameClient: (from: string, to: string) => __TAURI_INVOKE<number>("rename_client", { from, to }),
+	getReport: (from: number, to: number, rounding: number) => __TAURI_INVOKE<ReportRow[]>("get_report", { from, to, rounding }),
+	/**  Écrit le CSV à `path` (choisi par l'utilisateur). Renvoie le nombre de lignes. */
+	exportCsv: (from: number, to: number, rounding: number, path: string) => __TAURI_INVOKE<number>("export_csv", { from, to, rounding, path }),
+	setRounding: (rounding: number) => __TAURI_INVOKE<Settings>("set_rounding", { rounding }),
+	activityStatus: () => __TAURI_INVOKE<ActivityStatus>("activity_status"),
+	setActivityEnabled: (enabled: boolean) => __TAURI_INVOKE<Settings>("set_activity_enabled", { enabled }),
+	requestActivityPermission: () => __TAURI_INVOKE<void>("request_activity_permission"),
+	clearActivity: () => __TAURI_INVOKE<null>("clear_activity"),
+	backupInfo: () => __TAURI_INVOKE<BackupInfo>("backup_info"),
+	backupNow: () => __TAURI_INVOKE<string>("backup_now"),
+	/**  `None` : revenir au dossier par défaut. */
+	setBackupDir: (dir: string | null) => __TAURI_INVOKE<Settings>("set_backup_dir", { dir }),
+	revealBackups: () => __TAURI_INVOKE<null>("reveal_backups"),
 };
 
 /** Events */
@@ -40,18 +61,41 @@ export const events = {
 	paletteOpened: makeEvent<PaletteOpened, PaletteOpened>("palette-opened"),
 	projectsChanged: makeEvent<ProjectsChanged, ProjectsChanged>("projects-changed"),
 	reminderShown: makeEvent<ReminderShown, ReminderShown>("reminder-shown"),
+	reviewRequested: makeEvent<ReviewRequested, ReviewRequested>("review-requested"),
+	settingsChanged: makeEvent<SettingsChanged, SettingsChanged>("settings-changed"),
 	timerChanged: makeEvent<TimerChanged, TimerChanged>("timer-changed"),
 };
 
 /* Types */
+export type ActivityStatus = {
+	enabled: boolean,
+	/**  macOS : permission « Enregistrement de l'écran » accordée (titres de fenêtres). */
+	titlesAllowed: boolean,
+};
+
 /**
  *  Erreur renvoyée au frontend. Chaque variante porte un message en français
  *  directement affichable.
  */
 export type AppError = { kind: "validation"; message: string } | { kind: "notFound"; message: string } | { kind: "database"; message: string } | { kind: "internal"; message: string };
 
+export type BackupInfo = {
+	dir: string,
+	custom: boolean,
+	/**  Nom du fichier de la sauvegarde la plus récente. */
+	latest: string | null,
+};
+
 /**  Une entrée de temps a été modifiée. */
 export type EntriesChanged = null;
+
+export type EntryInput = {
+	projectId: string,
+	startedAt: number,
+	/**  `None` : l'entrée tourne encore (seulement pour le timer en cours). */
+	endedAt: number | null,
+	note: string,
+};
 
 export type EntrySource = "timer" | "manual" | "activity" | "idle";
 
@@ -81,6 +125,11 @@ export type IdleResolution =
 { action: "discard" } | 
 /**  Le temps est retiré de l'entrée et compté sur un autre projet. */
 { action: "reassign"; projectId: string };
+
+export type NamedTime = {
+	name: string,
+	ms: number,
+};
 
 /**  Le sélecteur rapide vient d'être affiché : il doit se réinitialiser. */
 export type PaletteOpened = null;
@@ -114,9 +163,13 @@ export type ReminderAction =
 /**  Ouvrir le sélecteur rapide. */
 "switch" | 
 /**  Arrêter le timer en cours. */
-"stop";
+"stop" | 
+/**  Ouvrir la revue de la journée. */
+"review";
 
-export type ReminderKind = "noTimer" | "checkIn";
+export type ReminderKind = "noTimer" | "checkIn" | 
+/**  Fin de journée : revoir et compléter ses temps. */
+"review";
 
 /**  Inactivité et rappels anti-oubli. Durées en minutes, heures en minutes depuis minuit. */
 export type ReminderSettings = {
@@ -128,6 +181,8 @@ export type ReminderSettings = {
 	activeFromMin?: number,
 	activeUntilMin?: number,
 	weekdaysOnly?: boolean,
+	reviewEnabled?: boolean,
+	reviewAtMin?: number,
 };
 
 /**  Un rappel vient d'être affiché dans la fenêtre de rappel. */
@@ -141,6 +196,22 @@ export type ReminderView = {
 	startedAt: number | null,
 };
 
+/**  Temps d'un projet sur un jour, brut et arrondi. */
+export type ReportRow = {
+	/**  Jour local, « AAAA-MM-JJ ». */
+	date: string,
+	projectId: string,
+	ms: number,
+	roundedMs: number,
+	notes: string[],
+};
+
+/**
+ *  L'utilisateur veut revoir sa journée (rappel de fin de journée) : la fenêtre
+ *  principale affiche la journée du jour.
+ */
+export type ReviewRequested = null;
+
 export type Settings = {
 	/**  Raccourci global du sélecteur rapide, au format accélérateur Tauri. */
 	shortcut?: string,
@@ -150,7 +221,16 @@ export type Settings = {
 	 */
 	autostartInitialized?: boolean,
 	reminders?: ReminderSettings,
+	/**  Arrondi des rapports et de l'export, en minutes (0, 5, 15 ou 30). */
+	roundingMin?: number,
+	/**  Suivi de la fenêtre active (désactivable à tout moment). */
+	activityEnabled?: boolean,
+	/**  Dossier des sauvegardes quotidiennes ; `None` : à côté de la base. */
+	backupDir?: string | null,
 };
+
+/**  Le suivi d'activité a été mis en pause ou relancé (depuis le tray ou les réglages). */
+export type SettingsChanged = null;
 
 export type TimeEntry = {
 	id: string,
@@ -166,6 +246,14 @@ export type TimeEntry = {
 
 /**  Le timer a démarré, changé de projet ou s'est arrêté. */
 export type TimerChanged = null;
+
+/**  Temps actif sans projet, à attribuer pendant la revue de journée. */
+export type UnassignedBlock = {
+	startedAt: number,
+	endedAt: number,
+	apps: NamedTime[],
+	titles: NamedTime[],
+};
 
 /* Tauri Specta runtime */
 type EventEmit<T> = [T] extends [null] ? () => Promise<void> : (payload: T) => Promise<void>;

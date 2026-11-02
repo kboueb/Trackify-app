@@ -59,7 +59,13 @@ pub struct ReminderConfig {
     pub active_from_min: u32,
     pub active_until_min: u32,
     pub weekdays_only: bool,
+    pub review_enabled: bool,
+    /// Heure locale (minutes depuis minuit) du rappel de revue de journée.
+    pub review_at_min: u32,
 }
+
+/// Le rappel de revue n'est plus proposé passé ce délai après son heure (app lancée tard).
+const REVIEW_WINDOW_MIN: u32 = 3 * 60;
 
 impl Default for ReminderConfig {
     fn default() -> Self {
@@ -73,6 +79,8 @@ impl Default for ReminderConfig {
             active_from_min: 8 * 60,
             active_until_min: 19 * 60,
             weekdays_only: true,
+            review_enabled: true,
+            review_at_min: 18 * 60,
         }
     }
 }
@@ -96,6 +104,8 @@ pub struct Reminders {
     no_timer_not_before: Millis,
     /// (entrée suivie, prochain point prévu).
     checkin: Option<(String, Millis)>,
+    /// Dernier jour (identifiant libre, ex. jours depuis l'époque) où la revue a été proposée.
+    review_day: Option<i64>,
 }
 
 impl Reminders {
@@ -146,6 +156,20 @@ impl Reminders {
     }
 
     /// « Plus tard » sur un rappel sans timer.
+    /// Vrai une seule fois par jour, à partir de l'heure de revue, quand l'utilisateur est là.
+    pub fn review_due(&mut self, cfg: &ReminderConfig, day: i64, idle: Millis, clock: LocalClock) -> bool {
+        let due = cfg.review_enabled
+            && (!cfg.weekdays_only || clock.weekday < 5)
+            && idle < cfg.idle_threshold
+            && clock.minute_of_day >= cfg.review_at_min
+            && clock.minute_of_day < cfg.review_at_min + REVIEW_WINDOW_MIN
+            && self.review_day != Some(day);
+        if due {
+            self.review_day = Some(day);
+        }
+        due
+    }
+
     pub fn snooze_no_timer(&mut self, until: Millis) {
         self.no_timer_not_before = self.no_timer_not_before.max(until);
     }
@@ -297,5 +321,20 @@ mod tests {
         r.tick(&cfg, 0, 0, None, WORK);
         assert_eq!(r.tick(&cfg, 60 * MINUTE, 0, None, WORK), None);
         assert_eq!(r.tick(&cfg, 200 * MINUTE, 0, Some(("e1", 0)), WORK), None);
+    }
+
+    #[test]
+    fn revue_une_fois_par_jour() {
+        let cfg = ReminderConfig::default();
+        let mut r = Reminders::default();
+        let at = |minute_of_day| LocalClock { minute_of_day, weekday: 2 };
+        assert!(!r.review_due(&cfg, 1, 0, at(17 * 60 + 59)));
+        assert!(!r.review_due(&cfg, 1, 10 * MINUTE, at(18 * 60)), "absent : on attend son retour");
+        assert!(r.review_due(&cfg, 1, 0, at(18 * 60 + 5)));
+        assert!(!r.review_due(&cfg, 1, 0, at(18 * 60 + 30)));
+        assert!(!r.review_due(&cfg, 2, 0, at(22 * 60)), "trop tard");
+        assert!(r.review_due(&cfg, 3, 0, at(18 * 60)));
+        let samedi = LocalClock { minute_of_day: 18 * 60, weekday: 5 };
+        assert!(!r.review_due(&cfg, 4, 0, samedi));
     }
 }

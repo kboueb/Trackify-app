@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
-import { commands, events, type IdleResolution, type ProjectInput } from "../bindings";
+import { commands, events, type EntryInput, type IdleResolution, type ProjectInput } from "../bindings";
 
 export const keys = {
   projects: (includeArchived: boolean) => ["projects", includeArchived] as const,
@@ -9,6 +9,10 @@ export const keys = {
   settings: ["settings"] as const,
   autostart: ["autostart"] as const,
   pendingIdle: ["pendingIdle"] as const,
+  unassigned: (from: number, to: number) => ["unassigned", from, to] as const,
+  report: (from: number, to: number, rounding: number) => ["report", from, to, rounding] as const,
+  activity: ["activity"] as const,
+  backup: ["backup"] as const,
 };
 
 export function useProjects(includeArchived = false) {
@@ -81,6 +85,65 @@ export const useSetEntryNote = () =>
 
 export const useDeleteEntry = () => useMutation({ mutationFn: commands.deleteEntry });
 
+export const useSaveEntry = () =>
+  useMutation({ mutationFn: ({ id, input }: { id?: string; input: EntryInput }) => commands.saveEntry(id ?? null, input) });
+
+export const useSplitEntry = () =>
+  useMutation({ mutationFn: ({ id, at }: { id: string; at: number }) => commands.splitEntry(id, at) });
+
+export const useMergeEntries = () => useMutation({ mutationFn: commands.mergeEntries });
+
+/** Temps actif sans projet (suivi d'activité). Rafraîchi chaque minute : l'activité n'émet pas d'événement. */
+export function useUnassigned(from: number, to: number) {
+  return useQuery({
+    queryKey: keys.unassigned(from, to),
+    queryFn: () => commands.listUnassigned(from, to),
+    refetchInterval: 60_000,
+  });
+}
+
+export const useRenameClient = () =>
+  useMutation({ mutationFn: ({ from, to }: { from: string; to: string }) => commands.renameClient(from, to) });
+
+export function useReport(from: number, to: number, rounding: number) {
+  return useQuery({ queryKey: keys.report(from, to, rounding), queryFn: () => commands.getReport(from, to, rounding) });
+}
+
+export function useSetRounding() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: commands.setRounding,
+    onSuccess: (settings) => qc.setQueryData(keys.settings, settings),
+  });
+}
+
+/** Statut du suivi ; relu au retour sur la fenêtre (la permission se donne dans les Réglages Système). */
+export function useActivityStatus() {
+  return useQuery({ queryKey: keys.activity, queryFn: commands.activityStatus, refetchOnWindowFocus: true });
+}
+
+export const useSetActivityEnabled = () => useMutation({ mutationFn: commands.setActivityEnabled });
+
+export function useBackupInfo() {
+  return useQuery({ queryKey: keys.backup, queryFn: commands.backupInfo });
+}
+
+export function useBackupNow() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: commands.backupNow, onSuccess: () => qc.invalidateQueries({ queryKey: keys.backup }) });
+}
+
+export function useSetBackupDir() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: commands.setBackupDir,
+    onSuccess: (settings) => {
+      qc.setQueryData(keys.settings, settings);
+      void qc.invalidateQueries({ queryKey: keys.backup });
+    },
+  });
+}
+
 export const useSaveProject = () =>
   useMutation({
     mutationFn: ({ id, input }: { id?: string; input: ProjectInput }) =>
@@ -100,8 +163,19 @@ export function useDataEvents() {
   useEffect(() => {
     const subscriptions = [
       events.timerChanged.listen(() => qc.invalidateQueries({ queryKey: keys.running })),
-      events.entriesChanged.listen(() => qc.invalidateQueries({ queryKey: ["entries"] })),
-      events.projectsChanged.listen(() => qc.invalidateQueries({ queryKey: ["projects"] })),
+      events.entriesChanged.listen(() => {
+        void qc.invalidateQueries({ queryKey: ["entries"] });
+        void qc.invalidateQueries({ queryKey: ["unassigned"] });
+        void qc.invalidateQueries({ queryKey: ["report"] });
+      }),
+      events.projectsChanged.listen(() => {
+        void qc.invalidateQueries({ queryKey: ["projects"] });
+        void qc.invalidateQueries({ queryKey: ["report"] });
+      }),
+      events.settingsChanged.listen(() => {
+        void qc.invalidateQueries({ queryKey: keys.settings });
+        void qc.invalidateQueries({ queryKey: keys.activity });
+      }),
       events.idleChanged.listen(() => qc.invalidateQueries({ queryKey: keys.pendingIdle })),
     ];
     return () => {

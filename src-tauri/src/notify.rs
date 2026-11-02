@@ -4,7 +4,7 @@ use tauri::AppHandle;
 use tauri_specta::Event;
 
 use crate::{
-    events::{EntriesChanged, ProjectsChanged, TimerChanged},
+    events::{EntriesChanged, ProjectsChanged, SettingsChanged, TimerChanged},
     tray,
 };
 
@@ -23,4 +23,10 @@ pub fn projects_changed(app: &AppHandle) {
 
 pub fn entries_changed(app: &AppHandle) {
     let _ = EntriesChanged.emit(app);
+}
+
+/// Réglage modifié hors de la fenêtre des réglages (ex. suivi d'activité depuis le tray).
+pub fn settings_changed(app: &AppHandle) {
+    let _ = SettingsChanged.emit(app);
+    tray::refresh(app);
 }

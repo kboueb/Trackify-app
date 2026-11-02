@@ -3,12 +3,11 @@
 use serde::Deserialize;
 use specta::Type;
 use sqlx::SqlitePool;
-use trackify_core::gaps::{GapOutcome, Span, remove_gap};
 
 use crate::{
     db::{entries, idle, models::EntrySource, projects},
     error::{AppError, AppResult},
-    services::timer::MIN_ENTRY_MS,
+    services::entries as entries_svc,
 };
 
 #[derive(Debug, Clone, Deserialize, Type)]
@@ -43,26 +42,9 @@ pub async fn resolve(pool: &SqlitePool, idle_id: &str, resolution: &IdleResoluti
     if !matches!(resolution, IdleResolution::Keep) {
         match entries::get(&mut *tx, &period.entry_id).await {
             Ok(entry) => {
-                let span = Span { start: entry.started_at, end: entry.ended_at };
-                if let GapOutcome::Split { before, after, removed } =
-                    remove_gap(span, period.started_at, period.ended_at, MIN_ENTRY_MS)
-                {
-                    // Clore ou supprimer l'entrée d'origine avant de recréer la suite :
-                    // l'index « un seul timer en cours » l'exige.
-                    match before {
-                        Some((_, end)) => {
-                            entries::set_ended(&mut *tx, &entry.id, end, now).await?;
-                        }
-                        None => entries::soft_delete(&mut *tx, &entry.id, now).await?,
-                    }
-                    if let Some(rest) = after {
-                        entries::insert(&mut *tx, &entry.project_id, rest.start, rest.end, &entry.note, entry.source, now)
-                            .await?;
-                    }
-                    if let IdleResolution::Reassign { project_id } = resolution {
-                        entries::insert(&mut *tx, project_id, removed.0, Some(removed.1), "", EntrySource::Idle, now)
-                            .await?;
-                    }
+                let removed = entries_svc::cut(&mut tx, &entry, period.started_at, period.ended_at, now).await?;
+                if let (Some((from, to)), IdleResolution::Reassign { project_id }) = (removed, resolution) {
+                    entries::insert(&mut *tx, project_id, from, Some(to), "", EntrySource::Idle, now).await?;
                 }
             }
             // L'entrée a été supprimée entre-temps : plus rien à couper.

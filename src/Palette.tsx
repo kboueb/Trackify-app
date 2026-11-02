@@ -1,12 +1,13 @@
 import { Command } from "cmdk";
-import { AppWindow, Search, Square } from "lucide-react";
+import { AppWindow, NotebookPen, Plus, Search, Square } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { commands, events } from "./bindings";
 import { ColorDot } from "./components/ProjectLabel";
-import { useDataEvents, useProjects, useRunning, useStartTimer, useStopTimer } from "./hooks/queries";
+import { useDataEvents, useProjects, useRunning, useSaveProject, useSetEntryNote, useStartTimer, useStopTimer } from "./hooks/queries";
+import { PROJECT_COLORS } from "./lib/colors";
 import { useNow } from "./hooks/useNow";
 import { errorMessage } from "./lib/errors";
-import { matchesSearch } from "./lib/search";
+import { matchesSearch, normalize } from "./lib/search";
 import { entryDuration, formatClock } from "./lib/time";
 
 const close = () => void commands.hidePalette();
@@ -19,14 +20,21 @@ export function Palette() {
   const { data: running } = useRunning();
   const start = useStartTimer();
   const stop = useStopTimer();
+  const create = useSaveProject();
+  const setNote = useSetEntryNote();
   const [search, setSearch] = useState("");
+  // « note » : la saisie sert à annoter l'entrée en cours au lieu de chercher un projet.
+  const [mode, setMode] = useState<"pick" | "note">("pick");
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const unlisten = events.paletteOpened.listen(() => {
       setSearch("");
+      setMode("pick");
       start.reset();
       stop.reset();
+      create.reset();
+      setNote.reset();
       inputRef.current?.focus();
     });
     return () => void unlisten.then((u) => u());
@@ -53,12 +61,65 @@ export function Palette() {
   useEffect(() => {
     if (!search) setSelected(firstId);
   }, [firstId, search]);
-  const error = start.error ?? stop.error;
+  const error = start.error ?? stop.error ?? create.error ?? setNote.error;
 
   const pick = async (projectId: string) => {
     await start.mutateAsync(projectId);
     close();
   };
+
+  // Nom inconnu : proposer de créer le projet (sans client, modifiable ensuite) et de le démarrer.
+  const name = search.trim();
+  const exists = projects.some((p) => normalize(p.name) === normalize(name));
+  const createAndStart = async () => {
+    const color = PROJECT_COLORS[projects.length % PROJECT_COLORS.length];
+    const project = await create.mutateAsync({ input: { name, client: "", color } });
+    await pick(project.id);
+  };
+
+  if (mode === "note" && running) {
+    const save = async () => {
+      await setNote.mutateAsync({ id: running.id, note: search });
+      close();
+    };
+    return (
+      <form
+        className="palette"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void save();
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") {
+            e.preventDefault();
+            setMode("pick");
+            setSearch("");
+          }
+        }}
+      >
+        <div className="palette-search">
+          <NotebookPen size={18} />
+          <input
+            ref={inputRef}
+            autoFocus
+            className="palette-input"
+            placeholder={`Note pour ${runningProject?.name ?? "l'entrée en cours"}…`}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+        {error && <p className="error palette-error">{errorMessage(error)}</p>}
+        <div className="palette-footer">
+          <span>
+            <span className="kbd">↵</span>enregistrer
+          </span>
+          <span>
+            <span className="kbd">Échap</span>retour
+          </span>
+        </div>
+      </form>
+    );
+  }
 
   return (
     <Command
@@ -100,6 +161,16 @@ export function Palette() {
           ))}
         </Command.Group>
 
+        {name && !exists && (
+          <Command.Group heading="Nouveau">
+            <Command.Item value="__create" keywords={[name]} onSelect={() => void createAndStart()}>
+              <Plus size={14} />
+              <span className="palette-main">Créer « {name} » et démarrer</span>
+              <span className="palette-meta">sans client</span>
+            </Command.Item>
+          </Command.Group>
+        )}
+
         {running && (
           <Command.Group heading="Timer">
             <Command.Item
@@ -117,6 +188,18 @@ export function Palette() {
               <span className="palette-meta">
                 {runningProject?.name} · {formatClock(entryDuration(running, now))}
               </span>
+            </Command.Item>
+            <Command.Item
+              value="__note"
+              keywords={["note", "annoter", "commentaire", runningProject?.name ?? ""]}
+              onSelect={() => {
+                setMode("note");
+                setSearch(running.note);
+              }}
+            >
+              <NotebookPen size={14} />
+              <span className="palette-main">{running.note ? "Modifier la note" : "Ajouter une note"}</span>
+              <span className="palette-meta">{running.note || runningProject?.name}</span>
             </Command.Item>
           </Command.Group>
         )}

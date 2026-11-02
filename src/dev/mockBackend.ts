@@ -5,7 +5,8 @@
  */
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { emit } from "@tauri-apps/api/event";
-import type { IdlePeriod, Project, ReminderView, Settings, TimeEntry } from "../bindings";
+import type { IdlePeriod, Project, ReminderView, ReportRow, Settings, TimeEntry, UnassignedBlock } from "../bindings";
+import { format } from "date-fns";
 
 const MIN = 60_000;
 const now = Date.now();
@@ -47,13 +48,47 @@ let settings: Settings = {
   reminders: {
     idleThresholdMin: 5, noTimerEnabled: true, noTimerAfterMin: 5, checkinEnabled: true,
     checkinEveryMin: 60, activeFromMin: 480, activeUntilMin: 1140, weekdaysOnly: true,
+    reviewEnabled: true, reviewAtMin: 1080,
   },
+  roundingMin: 15,
+  activityEnabled: true,
+  backupDir: null,
 };
 let autostart = true;
 const idle: IdlePeriod[] = [];
 const reminder: ReminderView = {
   kind: "checkIn", projectName: "Multisite", projectColor: "#3e63dd", startedAt: now - 75 * MIN,
 };
+
+const dayStart = today.getTime();
+const unassigned: UnassignedBlock[] = [
+  {
+    startedAt: at(12, 10),
+    endedAt: at(12, 55),
+    apps: [{ name: "Figma", ms: 30 * MIN }, { name: "Slack", ms: 15 * MIN }],
+    titles: [{ name: "Charte Globex – v3", ms: 30 * MIN }, { name: "#globex-projet", ms: 15 * MIN }],
+  },
+];
+
+/** Totaux par jour et par projet, arrondis au plus proche (au moins un pas). */
+function report(from: number, to: number, rounding: number): ReportRow[] {
+  const map = new Map<string, ReportRow>();
+  for (const e of entries) {
+    const s = Math.max(e.startedAt, from);
+    const end = Math.min(e.endedAt ?? Date.now(), to);
+    if (end <= s) continue;
+    const date = format(s, "yyyy-MM-dd");
+    const row = map.get(date + e.projectId) ?? { date, projectId: e.projectId, ms: 0, roundedMs: 0, notes: [] };
+    row.ms += end - s;
+    if (e.note && !row.notes.includes(e.note)) row.notes.push(e.note);
+    map.set(date + e.projectId, row);
+  }
+  const step = rounding * MIN;
+  return [...map.values()].map((r) => ({
+    ...r,
+    roundedMs: step ? Math.max(step, Math.round(r.ms / step) * step) : r.ms,
+  }));
+}
 
 const running = () => entries.find((e) => e.endedAt === null) ?? null;
 const changed = (...names: string[]) => setTimeout(() => names.forEach((n) => void emit(n, null)), 0);
@@ -132,6 +167,49 @@ const handlers: Record<string, (a: Args) => unknown> = {
     changed("idle-changed");
     return null;
   },
+  save_entry: ({ id, input }) => {
+    const e = id ? Object.assign(byId(entries, id), input) : entry(byId(projects, input.projectId), input.startedAt, input.endedAt, input.note);
+    if (!id) entries.push(e);
+    changed("timer-changed", "entries-changed");
+    return e;
+  },
+  split_entry: ({ id, at }) => {
+    const e = byId(entries, id);
+    entries.push(entry(byId(projects, e.projectId), at, e.endedAt, e.note));
+    e.endedAt = at;
+    changed("entries-changed");
+    return null;
+  },
+  merge_entries: ({ ids }) => {
+    const list = ids.map((x: string) => byId(entries, x)).sort((a: TimeEntry, b: TimeEntry) => a.startedAt - b.startedAt);
+    const [first, ...rest] = list;
+    first.endedAt = rest.some((r: TimeEntry) => r.endedAt === null) ? null : Math.max(...list.map((r: TimeEntry) => r.endedAt ?? 0));
+    rest.forEach((r: TimeEntry) => entries.splice(entries.indexOf(r), 1));
+    changed("entries-changed");
+    return first;
+  },
+  list_unassigned: ({ from }) => (from === dayStart ? unassigned : []),
+  rename_client: ({ from, to }) => {
+    const hit = projects.filter((p) => p.client === from);
+    hit.forEach((p) => (p.client = to));
+    changed("projects-changed");
+    return hit.length;
+  },
+  get_report: ({ from, to, rounding }) => report(from, to, rounding),
+  export_csv: ({ from, to, rounding }) => report(from, to, rounding).length,
+  set_rounding: ({ rounding }) => (settings = { ...settings, roundingMin: rounding }),
+  activity_status: () => ({ enabled: settings.activityEnabled ?? true, titlesAllowed: false }),
+  set_activity_enabled: ({ enabled }) => (settings = { ...settings, activityEnabled: enabled }),
+  request_activity_permission: () => null,
+  clear_activity: () => null,
+  backup_info: () => ({
+    dir: settings.backupDir ?? "~/Library/Application Support/com.trackify.app/backups",
+    custom: Boolean(settings.backupDir),
+    latest: `trackify-${format(now, "yyyy-MM-dd")}.db`,
+  }),
+  backup_now: () => "trackify.db",
+  set_backup_dir: ({ dir }) => (settings = { ...settings, backupDir: dir }),
+  reveal_backups: () => null,
   get_reminder: () => reminder,
   reminder_action: () => null,
   hide_palette: () => null,

@@ -20,6 +20,12 @@ pub struct Settings {
     /// plus ensuite si l'utilisateur l'a coupé.
     pub autostart_initialized: bool,
     pub reminders: ReminderSettings,
+    /// Arrondi des rapports et de l'export, en minutes (0, 5, 15 ou 30).
+    pub rounding_min: u32,
+    /// Suivi de la fenêtre active (désactivable à tout moment).
+    pub activity_enabled: bool,
+    /// Dossier des sauvegardes quotidiennes ; `None` : à côté de la base.
+    pub backup_dir: Option<String>,
 }
 
 impl Default for Settings {
@@ -29,6 +35,9 @@ impl Default for Settings {
             shortcut: "CommandOrControl+Shift+Space".into(),
             autostart_initialized: false,
             reminders: ReminderSettings::default(),
+            rounding_min: 0,
+            activity_enabled: true,
+            backup_dir: None,
         }
     }
 }
@@ -45,6 +54,8 @@ pub struct ReminderSettings {
     pub active_from_min: u32,
     pub active_until_min: u32,
     pub weekdays_only: bool,
+    pub review_enabled: bool,
+    pub review_at_min: u32,
 }
 
 impl Default for ReminderSettings {
@@ -65,6 +76,8 @@ impl ReminderSettings {
             active_from_min: c.active_from_min,
             active_until_min: c.active_until_min,
             weekdays_only: c.weekdays_only,
+            review_enabled: c.review_enabled,
+            review_at_min: c.review_at_min,
         }
     }
 
@@ -79,6 +92,8 @@ impl ReminderSettings {
             active_from_min: self.active_from_min,
             active_until_min: self.active_until_min,
             weekdays_only: self.weekdays_only,
+            review_enabled: self.review_enabled,
+            review_at_min: self.review_at_min,
             ..ReminderConfig::default()
         }
     }
@@ -91,7 +106,8 @@ impl ReminderSettings {
         check(
             self.active_from_min < self.active_until_min && self.active_until_min <= 24 * 60,
             "La plage horaire des rappels est invalide.",
-        )
+        )?;
+        check(self.review_at_min < 24 * 60, "L'heure de la revue de journée est invalide.")
     }
 }
 
@@ -152,6 +168,9 @@ mod tests {
             shortcut: "Alt+KeyT".into(),
             autostart_initialized: true,
             reminders: ReminderSettings { checkin_every_min: 90, ..Default::default() },
+            rounding_min: 15,
+            activity_enabled: false,
+            backup_dir: Some("/tmp/sauvegardes".into()),
         };
         save(&pool, &s).await.unwrap();
         save(&pool, &s).await.unwrap();

@@ -1,5 +1,6 @@
-import { FolderKanban, Settings, Square, Timer } from "lucide-react";
-import { useMemo, useState, type ComponentType } from "react";
+import { BarChart3, FolderKanban, Settings, Square, Timer } from "lucide-react";
+import { useEffect, useMemo, useState, type ComponentType } from "react";
+import { events } from "./bindings";
 import { BrandMark } from "./components/BrandMark";
 import { IdlePrompt } from "./components/IdlePrompt";
 import { ColorDot } from "./components/ProjectLabel";
@@ -8,20 +9,28 @@ import { useNow } from "./hooks/useNow";
 import { formatAccelerator } from "./lib/shortcut";
 import { entryDuration, formatClock } from "./lib/time";
 import { ProjectsPage } from "./pages/ProjectsPage";
+import { ReportsPage } from "./pages/ReportsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { TimerPage } from "./pages/TimerPage";
 
-type Page = "timer" | "projects" | "settings";
+type Page = "timer" | "projects" | "reports" | "settings";
 
 const NAV: { id: Page; label: string; icon: ComponentType<{ size?: number }> }[] = [
   { id: "timer", label: "Aujourd'hui", icon: Timer },
   { id: "projects", label: "Projets", icon: FolderKanban },
+  { id: "reports", label: "Rapports", icon: BarChart3 },
   { id: "settings", label: "Réglages", icon: Settings },
 ];
 
 export default function App() {
   useDataEvents();
   const [page, setPage] = useState<Page>("timer");
+
+  // Rappel de fin de journée : on ouvre la journée.
+  useEffect(() => {
+    const unlisten = events.reviewRequested.listen(() => setPage("timer"));
+    return () => void unlisten.then((u) => u());
+  }, []);
 
   return (
     <div className="layout">
@@ -49,6 +58,7 @@ export default function App() {
       <main className="content">
         {page === "timer" && <TimerPage onManageProjects={() => setPage("projects")} />}
         {page === "projects" && <ProjectsPage />}
+        {page === "reports" && <ReportsPage />}
         {page === "settings" && <SettingsPage />}
       </main>
       <IdlePrompt />

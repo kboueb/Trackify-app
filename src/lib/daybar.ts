@@ -33,7 +33,7 @@ export function dayWindow(
 
 /** Segments colorés de la frise, bornés à la fenêtre `[fromHour, toHour]`. */
 export function segments(
-  entries: TimeEntry[],
+  entries: Pick<TimeEntry, "id" | "projectId" | "startedAt" | "endedAt">[],
   dayStart: number,
   [fromHour, toHour]: [number, number],
   now: number,

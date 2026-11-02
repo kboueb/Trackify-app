@@ -15,10 +15,10 @@ use trackify_core::durations::format_hms;
 
 use crate::{
     AppState,
-    db::{entries, now_ms, projects},
+    db::{entries, now_ms, projects, settings},
     error::AppResult,
     notify,
-    services::timer,
+    services::{activity, timer},
     windows,
 };
 
@@ -83,6 +83,7 @@ async fn rebuild(app: &AppHandle) -> AppResult<()> {
         None => None,
     };
     let recent = projects::recent(db, RECENT_COUNT).await?;
+    let tracking = settings::load(db).await?.activity_enabled;
 
     let menu = Menu::new(app)?;
     let status = match (&running, &current) {
@@ -112,6 +113,7 @@ async fn rebuild(app: &AppHandle) -> AppResult<()> {
     menu.append(&PredefinedMenuItem::separator(app)?)?;
     menu.append(&MenuItem::with_id(app, "palette", "Sélecteur rapide…", true, None::<&str>)?)?;
     menu.append(&MenuItem::with_id(app, "open", "Ouvrir Trackify", true, None::<&str>)?)?;
+    menu.append(&CheckMenuItem::with_id(app, "activity", "Suivi d'activité", true, tracking, None::<&str>)?)?;
     menu.append(&PredefinedMenuItem::separator(app)?)?;
     menu.append(&MenuItem::with_id(app, "quit", "Quitter Trackify", true, None::<&str>)?)?;
 
@@ -175,6 +177,20 @@ fn on_menu_event(app: &AppHandle, event: MenuEvent) {
         "palette" => windows::toggle_palette(app),
         "open" => windows::show_main(app),
         "quit" => app.exit(0),
+        "activity" => {
+            let app = app.clone();
+            tauri::async_runtime::spawn(async move {
+                let db = &app.state::<AppState>().db;
+                let result = match settings::load(db).await {
+                    Ok(s) => activity::set_enabled(db, !s.activity_enabled).await.map(|_| ()),
+                    Err(e) => Err(e),
+                };
+                if let Err(e) = result {
+                    eprintln!("tray : suivi d'activité : {e}");
+                }
+                notify::settings_changed(&app);
+            });
+        }
         id => {
             if let Some(project_id) = id.strip_prefix("project:") {
                 let app = app.clone();
