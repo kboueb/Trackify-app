@@ -10,7 +10,7 @@ mod tray;
 mod windows;
 
 use sqlx::SqlitePool;
-use tauri::{Manager, RunEvent, WindowEvent};
+use tauri::{Manager, WindowEvent};
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 use tauri_specta::{Builder, ErrorHandlingMode, collect_commands, collect_events};
 
@@ -147,7 +147,7 @@ pub fn run() {
     app.run(|app, event| {
         // macOS : clic sur l'icône du Dock alors que la fenêtre est masquée.
         #[cfg(target_os = "macos")]
-        if let RunEvent::Reopen { .. } = event {
+        if let tauri::RunEvent::Reopen { .. } = event {
             windows::show_main(app);
         }
         let _ = (app, event);
