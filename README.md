@@ -37,11 +37,15 @@ Tout reste sur l'ordinateur : une base SQLite locale, aucun compte, aucun envoi 
 
 ## Installation (utilisateur)
 
-1. Construis l'app (voir plus bas), ou récupère le `.dmg` produit dans `target/release/bundle/dmg/`.
+1. Télécharge `Trackify_x.y.z_universal.dmg` depuis la dernière release : https://github.com/kboueb/Trackify-app/releases/latest
 2. Ouvre le `.dmg` et glisse **Trackify** dans **Applications**.
-3. **Premier lancement :** l'app n'est pas signée par un développeur Apple identifié.
-   - Ouvre-la une fois par clic droit › **Ouvrir**, puis confirme.
-   - Ou, dans un terminal : `xattr -dr com.apple.quarantine /Applications/Trackify.app`.
+3. **Premier lancement :** l'app n'est pas notarisée par Apple. macOS affiche « Trackify.app n'a pas été ouvert » :
+   clique sur **OK** (surtout pas **Placer dans la corbeille**), puis :
+   - **Réglages Système › Confidentialité et sécurité**, en bas : **Ouvrir quand même**, puis confirme
+     (depuis macOS 15, le clic droit › Ouvrir ne suffit plus) ;
+   - ou, dans un terminal : `xattr -dr com.apple.quarantine /Applications/Trackify.app`.
+
+   À faire une seule fois : les mises à jour suivantes s'installent depuis l'app, sans ce blocage.
 4. Trackify se lance ensuite à chaque ouverture de session, en arrière-plan. Ce lancement automatique se désactive dans Réglages.
 
 **Windows :**
