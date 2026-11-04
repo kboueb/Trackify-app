@@ -117,6 +117,14 @@ export function useSetRounding() {
   });
 }
 
+export function useSetTrayTitle() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: commands.setTrayTitle,
+    onSuccess: (settings) => qc.setQueryData(keys.settings, settings),
+  });
+}
+
 /** Statut du suivi ; relu au retour sur la fenêtre (la permission se donne dans les Réglages Système). */
 export function useActivityStatus() {
   return useQuery({ queryKey: keys.activity, queryFn: commands.activityStatus, refetchOnWindowFocus: true });

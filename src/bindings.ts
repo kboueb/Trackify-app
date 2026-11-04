@@ -43,6 +43,7 @@ export const commands = {
 	/**  Écrit le CSV à `path` (choisi par l'utilisateur). Renvoie le nombre de lignes. */
 	exportCsv: (from: number, to: number, rounding: number, path: string) => __TAURI_INVOKE<number>("export_csv", { from, to, rounding, path }),
 	setRounding: (rounding: number) => __TAURI_INVOKE<Settings>("set_rounding", { rounding }),
+	setTrayTitle: (mode: TrayTitle) => __TAURI_INVOKE<Settings>("set_tray_title", { mode }),
 	activityStatus: () => __TAURI_INVOKE<ActivityStatus>("activity_status"),
 	setActivityEnabled: (enabled: boolean) => __TAURI_INVOKE<Settings>("set_activity_enabled", { enabled }),
 	requestActivityPermission: () => __TAURI_INVOKE<void>("request_activity_permission"),
@@ -227,6 +228,8 @@ export type Settings = {
 	activityEnabled?: boolean,
 	/**  Dossier des sauvegardes quotidiennes ; `None` : à côté de la base. */
 	backupDir?: string | null,
+	/**  Texte affiché à côté de l'icône de la barre des menus pendant un timer (macOS). */
+	trayTitle?: TrayTitle,
 };
 
 /**  Le suivi d'activité a été mis en pause ou relancé (depuis le tray ou les réglages). */
@@ -246,6 +249,18 @@ export type TimeEntry = {
 
 /**  Le timer a démarré, changé de projet ou s'est arrêté. */
 export type TimerChanged = null;
+
+/**
+ *  Sur un Mac à encoche, macOS masque sans prévenir les éléments de la barre des menus
+ *  qui ne tiennent pas : un titre plus court garde l'icône visible.
+ */
+export type TrayTitle = 
+/**  « Projet · 1:23:45 » */
+"projectAndDuration" | 
+/**  « 1:23:45 » */
+"duration" | 
+/**  Icône seule. */
+"hidden";
 
 /**  Temps actif sans projet, à attribuer pendant la revue de journée. */
 export type UnassignedBlock = {

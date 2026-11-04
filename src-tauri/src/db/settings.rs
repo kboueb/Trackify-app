@@ -26,6 +26,22 @@ pub struct Settings {
     pub activity_enabled: bool,
     /// Dossier des sauvegardes quotidiennes ; `None` : à côté de la base.
     pub backup_dir: Option<String>,
+    /// Texte affiché à côté de l'icône de la barre des menus pendant un timer (macOS).
+    pub tray_title: TrayTitle,
+}
+
+/// Sur un Mac à encoche, macOS masque sans prévenir les éléments de la barre des menus
+/// qui ne tiennent pas : un titre plus court garde l'icône visible.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub enum TrayTitle {
+    /// « Projet · 1:23:45 »
+    #[default]
+    ProjectAndDuration,
+    /// « 1:23:45 »
+    Duration,
+    /// Icône seule.
+    Hidden,
 }
 
 impl Default for Settings {
@@ -38,6 +54,7 @@ impl Default for Settings {
             rounding_min: 0,
             activity_enabled: true,
             backup_dir: None,
+            tray_title: TrayTitle::default(),
         }
     }
 }
@@ -171,6 +188,7 @@ mod tests {
             rounding_min: 15,
             activity_enabled: false,
             backup_dir: Some("/tmp/sauvegardes".into()),
+            tray_title: TrayTitle::Duration,
         };
         save(&pool, &s).await.unwrap();
         save(&pool, &s).await.unwrap();

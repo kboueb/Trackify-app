@@ -1,7 +1,7 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import { ShieldAlert, ShieldCheck } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
-import { commands, type ReminderSettings } from "../bindings";
+import { commands, type ReminderSettings, type TrayTitle } from "../bindings";
 import { ConfirmButton } from "../components/ConfirmButton";
 import {
   useActivityStatus,
@@ -13,6 +13,7 @@ import {
   useSetBackupDir,
   useSetReminderSettings,
   useSetShortcut,
+  useSetTrayTitle,
   useSettings,
 } from "../hooks/queries";
 import { errorMessage } from "../lib/errors";
@@ -313,6 +314,7 @@ function GeneralSettings() {
         <div className="settings-group">
           <ShortcutRow />
           <AutostartRow />
+          {isMac && <TrayTitleRow />}
           <Row
             label="Fermer la fenêtre"
             hint={`Trackify reste dans ${isMac ? "la barre des menus" : "la zone de notification"} et le timer continue. Pour quitter : menu de l'icône › Quitter.`}
@@ -377,6 +379,36 @@ function ShortcutRow() {
       >
         {recording ? "Annuler" : "Modifier"}
       </button>
+    </Row>
+  );
+}
+
+function TrayTitleRow() {
+  const { data: settings } = useSettings();
+  const setTrayTitle = useSetTrayTitle();
+
+  return (
+    <Row
+      label="Barre des menus pendant un timer"
+      hint={
+        setTrayTitle.error ? (
+          <span className="error">{errorMessage(setTrayTitle.error)}</span>
+        ) : (
+          "Si l'icône n'apparaît pas, la barre est trop pleine (macOS masque ce qui passe sous l'encoche) : choisis un affichage plus court."
+        )
+      }
+    >
+      <select
+        className="input"
+        value={settings?.trayTitle ?? "projectAndDuration"}
+        disabled={!settings || setTrayTitle.isPending}
+        onChange={(e) => setTrayTitle.mutate(e.target.value as TrayTitle)}
+        aria-label="Barre des menus pendant un timer"
+      >
+        <option value="projectAndDuration">Projet et durée</option>
+        <option value="duration">Durée seule</option>
+        <option value="hidden">Icône seule</option>
+      </select>
     </Row>
   );
 }

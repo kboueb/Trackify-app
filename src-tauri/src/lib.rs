@@ -56,6 +56,7 @@ fn specta_builder() -> Builder<tauri::Wry> {
             commands::get_report,
             commands::export_csv,
             commands::set_rounding,
+            commands::set_tray_title,
             commands::activity_status,
             commands::set_activity_enabled,
             commands::request_activity_permission,

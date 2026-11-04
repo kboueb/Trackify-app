@@ -16,11 +16,11 @@ use crate::{
         models::{Project, ProjectInput, TimeEntry},
         now_ms, projects,
         idle::{self, IdlePeriod},
-        settings::{self, ReminderSettings, Settings},
+        settings::{self, ReminderSettings, Settings, TrayTitle},
     },
     error::{AppError, AppResult},
     events::{IdleChanged, ReviewRequested},
-    notify, services,
+    notify, services, tray,
     services::{
         activity::UnassignedBlock,
         backup,
@@ -320,6 +320,16 @@ pub async fn set_rounding(state: State<'_, AppState>, rounding: u32) -> AppResul
     let mut current = settings::load(&state.db).await?;
     current.rounding_min = rounding;
     settings::save(&state.db, &current).await?;
+    Ok(current)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn set_tray_title(app: AppHandle, state: State<'_, AppState>, mode: TrayTitle) -> AppResult<Settings> {
+    let mut current = settings::load(&state.db).await?;
+    current.tray_title = mode;
+    settings::save(&state.db, &current).await?;
+    tray::refresh(&app);
     Ok(current)
 }
 

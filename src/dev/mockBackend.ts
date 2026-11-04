@@ -53,6 +53,7 @@ let settings: Settings = {
   roundingMin: 15,
   activityEnabled: true,
   backupDir: null,
+  trayTitle: "projectAndDuration",
 };
 let autostart = true;
 const idle: IdlePeriod[] = [];
@@ -198,6 +199,7 @@ const handlers: Record<string, (a: Args) => unknown> = {
   get_report: ({ from, to, rounding }) => report(from, to, rounding),
   export_csv: ({ from, to, rounding }) => report(from, to, rounding).length,
   set_rounding: ({ rounding }) => (settings = { ...settings, roundingMin: rounding }),
+  set_tray_title: ({ mode }) => (settings = { ...settings, trayTitle: mode }),
   activity_status: () => ({ enabled: settings.activityEnabled ?? true, titlesAllowed: false }),
   set_activity_enabled: ({ enabled }) => (settings = { ...settings, activityEnabled: enabled }),
   request_activity_permission: () => null,

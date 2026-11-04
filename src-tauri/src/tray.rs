@@ -15,7 +15,10 @@ use trackify_core::durations::format_hms;
 
 use crate::{
     AppState,
-    db::{entries, now_ms, projects, settings},
+    db::{
+        entries, now_ms, projects,
+        settings::{self, TrayTitle},
+    },
     error::AppResult,
     notify,
     services::{activity, timer},
@@ -36,7 +39,9 @@ const DOT_COLOR: [u8; 3] = [0xff, 0x4d, 0x61];
 #[derive(Default)]
 struct TrayStatus {
     running: Mutex<Option<(i64, String)>>,
-    last_title: Mutex<String>,
+    /// Dernier (titre, infobulle) envoyés, pour ne pas solliciter l'OS inutilement.
+    last_shown: Mutex<(String, String)>,
+    title_mode: Mutex<TrayTitle>,
     /// Couleur de l'icône affichée (`None` : icône estompée, aucun timer).
     icon_color: Mutex<Option<String>>,
 }
@@ -83,7 +88,9 @@ async fn rebuild(app: &AppHandle) -> AppResult<()> {
         None => None,
     };
     let recent = projects::recent(db, RECENT_COUNT).await?;
-    let tracking = settings::load(db).await?.activity_enabled;
+    let settings = settings::load(db).await?;
+    let tracking = settings.activity_enabled;
+    *app.state::<TrayStatus>().title_mode.lock().unwrap() = settings.tray_title;
 
     let menu = Menu::new(app)?;
     let status = match (&running, &current) {
@@ -144,22 +151,31 @@ async fn rebuild(app: &AppHandle) -> AppResult<()> {
 
 fn update_title(app: &AppHandle) {
     let status = app.state::<TrayStatus>();
-    let title = match &*status.running.lock().unwrap() {
-        Some((started_at, name)) => format!("{name} · {}", format_hms(now_ms() - started_at)),
-        None => String::new(),
+    let full = match &*status.running.lock().unwrap() {
+        Some((started_at, name)) => Some((name.clone(), format_hms(now_ms() - started_at))),
+        None => None,
     };
-    let mut last = status.last_title.lock().unwrap();
-    if *last == title {
+    let title = match (&full, *status.title_mode.lock().unwrap()) {
+        (Some((name, elapsed)), TrayTitle::ProjectAndDuration) => format!("{name} · {elapsed}"),
+        (Some((_, elapsed)), TrayTitle::Duration) => elapsed.clone(),
+        _ => String::new(),
+    };
+    // L'infobulle garde le détail complet, quel que soit le mode d'affichage.
+    let tooltip = match &full {
+        Some((name, elapsed)) => format!("Trackify — {name} · {elapsed}"),
+        None => "Trackify".to_string(),
+    };
+    let mut last = status.last_shown.lock().unwrap();
+    if last.0 == title && last.1 == tooltip {
         return;
     }
     if let Some(tray) = app.tray_by_id(TRAY_ID) {
         // Le texte à côté de l'icône n'existe que sur macOS ; ailleurs, l'infobulle suffit.
         #[cfg(target_os = "macos")]
         let _ = tray.set_title(if title.is_empty() { None } else { Some(title.as_str()) });
-        let tooltip = if title.is_empty() { "Trackify".to_string() } else { format!("Trackify — {title}") };
-        let _ = tray.set_tooltip(Some(tooltip));
+        let _ = tray.set_tooltip(Some(tooltip.as_str()));
     }
-    *last = title;
+    *last = (title, tooltip);
 }
 
 fn on_menu_event(app: &AppHandle, event: MenuEvent) {
