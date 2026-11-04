@@ -4,6 +4,7 @@ import { events } from "./bindings";
 import { BrandMark } from "./components/BrandMark";
 import { IdlePrompt } from "./components/IdlePrompt";
 import { ColorDot } from "./components/ProjectLabel";
+import { UpdatePrompt } from "./components/UpdatePrompt";
 import { useDataEvents, useProjects, useRunning, useSettings, useStopTimer } from "./hooks/queries";
 import { useNow } from "./hooks/useNow";
 import { formatAccelerator } from "./lib/shortcut";
@@ -62,6 +63,7 @@ export default function App() {
         {page === "settings" && <SettingsPage />}
       </main>
       <IdlePrompt />
+      <UpdatePrompt />
     </div>
   );
 }

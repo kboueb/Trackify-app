@@ -1150,6 +1150,12 @@ select.input {
   height: 36px;
 }
 
+.update-notes {
+  white-space: pre-line;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
 .idle-reassign {
   display: flex;
   gap: 8px;

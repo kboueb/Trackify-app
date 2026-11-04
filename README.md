@@ -45,8 +45,8 @@ Tout reste sur l'ordinateur : une base SQLite locale, aucun compte, aucun envoi 
 4. Trackify se lance ensuite à chaque ouverture de session, en arrière-plan. Ce lancement automatique se désactive dans Réglages.
 
 **Windows :**
-1. Récupère l'installeur produit par GitHub Actions : onglet **Actions** › workflow **Windows** › dernier run › artefact **trackify-windows**.
-   Pour une version taguée (`git tag v0.2.0 && git push --tags`), il est aussi joint à la release en brouillon.
+1. Télécharge `Trackify_x.y.z_x64-setup.exe` depuis la dernière release : https://github.com/kboueb/Trackify-app/releases/latest
+   (version de développement : onglet **Actions** › workflow **Windows** › dernier run › artefact **trackify-windows**).
 2. Lance `Trackify_x.y.z_x64-setup.exe` (ou le `.msi`).
 3. **Premier lancement :** l'installeur n'est pas signé, SmartScreen affiche « Windows a protégé votre ordinateur ».
    Clique sur **Informations complémentaires**, puis **Exécuter quand même**.
@@ -76,6 +76,26 @@ Ce dossier contient `trackify.db` et le sous-dossier `backups/`.
 2. Remplace `trackify.db` par une copie de `backups/trackify-AAAA-MM-JJ.db` renommée en `trackify.db`.
 3. Supprime les fichiers `trackify.db-wal` et `trackify.db-shm` s'ils existent.
 4. Relance Trackify.
+
+## Mises à jour
+
+Trackify vérifie au lancement, puis toutes les 6 h, s'il existe une release plus récente sur GitHub.
+Si c'est le cas, un popup propose **Mettre à jour** : téléchargement, installation, redémarrage. **Plus tard** masque le
+popup pour cette version ; elle reste installable depuis **Réglages › À propos**.
+
+Les mises à jour sont signées avec une clé propre à Trackify (rien à voir avec un certificat Apple ou Microsoft).
+L'app refuse toute mise à jour qui n'est pas signée par cette clé.
+
+**Publier une version :**
+```bash
+npm version 0.2.0         # ou patch / minor : met à jour package.json, commite et crée le tag v0.2.0
+git push --follow-tags    # le workflow Release construit macOS + Windows et publie la release
+```
+
+**La clé de signature** est dans `~/.tauri/trackify.key`, son mot de passe dans `~/.tauri/trackify.key.password`.
+Les deux sont aussi enregistrés dans les secrets GitHub du dépôt (`TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`).
+**Sauvegarde-les ailleurs** (gestionnaire de mots de passe) : sans elles, les versions déjà installées ne pourront
+plus jamais être mises à jour automatiquement.
 
 ## Développement
 

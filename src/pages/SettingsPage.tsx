@@ -16,6 +16,7 @@ import {
   useSetTrayTitle,
   useSettings,
 } from "../hooks/queries";
+import { inTauri, installLabel, useAppVersion, useAvailableUpdate, useInstallUpdate } from "../hooks/updater";
 import { errorMessage } from "../lib/errors";
 import { acceleratorFromEvent, formatAccelerator, hasModifier, isMac } from "../lib/shortcut";
 import { minutesToTime, timeToMinutes } from "../lib/time";
@@ -30,6 +31,7 @@ export function SettingsPage() {
       <ActivitySettings />
       <BackupSettings />
       <GeneralSettings />
+      <AboutSettings />
     </div>
   );
 }
@@ -320,6 +322,58 @@ function GeneralSettings() {
             hint={`Trackify reste dans ${isMac ? "la barre des menus" : "la zone de notification"} et le timer continue. Pour quitter : menu de l'icône › Quitter.`}
           >
             {null}
+          </Row>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function AboutSettings() {
+  const { data: version } = useAppVersion();
+  const update = useAvailableUpdate();
+  const install = useInstallUpdate();
+
+  let status: ReactNode = "Recherche automatique au lancement, puis toutes les 6 h.";
+  if (!inTauri) status = "Indisponible hors de l'app installée.";
+  else if (update.isFetching) status = "Recherche en cours…";
+  else if (update.error) status = <span className="error">Vérification impossible : {errorMessage(update.error)}</span>;
+  else if (update.data) status = `La version ${update.data.version} est disponible.`;
+  else if (update.isFetched) status = "Trackify est à jour.";
+
+  return (
+    <section className="section">
+      <div className="section-head">
+        <h2>À propos</h2>
+      </div>
+      <div className="card">
+        <div className="settings-group">
+          <Row label="Trackify" hint={`Version ${version ?? "—"} · © 2026 Kani Bouébassihou`}>
+            {null}
+          </Row>
+          <Row
+            label="Mises à jour"
+            hint={install.error ? <span className="error">{errorMessage(install.error)}</span> : status}
+          >
+            {update.data ? (
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={install.isPending}
+                onClick={() => update.data && install.mutate(update.data)}
+              >
+                {installLabel(install.isPending, install.progress)}
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="btn"
+                disabled={!inTauri || update.isFetching}
+                onClick={() => void update.refetch()}
+              >
+                Rechercher
+              </button>
+            )}
           </Row>
         </div>
       </div>

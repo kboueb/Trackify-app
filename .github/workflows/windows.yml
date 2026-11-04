@@ -1,16 +1,15 @@
-# Build Windows : tests puis installeurs (.msi et .exe NSIS).
-# - À chaque push sur main : les installeurs sont téléchargeables dans l'onglet Actions (artefact « trackify-windows »).
-# - Sur un tag v* (ex. v0.2.0) : ils sont aussi joints à une release GitHub en brouillon.
+# Build Windows : tests puis installeurs (.msi et .exe NSIS), à chaque push sur main.
+# Les installeurs sont téléchargeables dans l'onglet Actions (artefact « trackify-windows »).
+# Les versions publiées (tags v*) passent par release.yml.
 name: Windows
 
 on:
   push:
     branches: [main]
-    tags: ["v*"]
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
@@ -43,13 +42,5 @@ jobs:
         with:
           name: trackify-windows
           path: |
-            target/release/bundle/msi/*.msi
-            target/release/bundle/nsis/*.exe
-
-      - if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
-        with:
-          draft: true
-          files: |
             target/release/bundle/msi/*.msi
             target/release/bundle/nsis/*.exe
