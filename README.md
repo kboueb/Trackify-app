@@ -44,6 +44,15 @@ Tout reste sur l'ordinateur : une base SQLite locale, aucun compte, aucun envoi 
    - Ou, dans un terminal : `xattr -dr com.apple.quarantine /Applications/Trackify.app`.
 4. Trackify se lance ensuite à chaque ouverture de session, en arrière-plan. Ce lancement automatique se désactive dans Réglages.
 
+**Windows :**
+1. Récupère l'installeur produit par GitHub Actions : onglet **Actions** › workflow **Windows** › dernier run › artefact **trackify-windows**.
+   Pour une version taguée (`git tag v0.2.0 && git push --tags`), il est aussi joint à la release en brouillon.
+2. Lance `Trackify_x.y.z_x64-setup.exe` (ou le `.msi`).
+3. **Premier lancement :** l'installeur n'est pas signé, SmartScreen affiche « Windows a protégé votre ordinateur ».
+   Clique sur **Informations complémentaires**, puis **Exécuter quand même**.
+4. Trackify vit dans la zone de notification, à droite de la barre des tâches (parfois derrière la flèche **^**).
+   Le raccourci du sélecteur rapide est **Ctrl+Maj+Espace**.
+
 Fermer la fenêtre ne quitte pas l'app : elle reste dans la barre des menus. Pour quitter, passe par le menu de l'icône, puis **Quitter Trackify**.
 
 ## Permissions par système

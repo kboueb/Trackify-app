@@ -34,6 +34,8 @@ const ICON_BARS: &[u8] = include_bytes!("../icons/tray-bars.png");
 const ICON_DOT: &[u8] = include_bytes!("../icons/tray-dot.png");
 /// Le point « maintenant » garde la couleur d'accent du logo, quel que soit le projet.
 const DOT_COLOR: [u8; 3] = [0xff, 0x4d, 0x61];
+#[cfg(not(target_os = "macos"))]
+const IDLE_GRAY: [u8; 3] = [0x9a, 0x9a, 0x9a];
 
 /// Ce que la boucle d'affichage doit montrer : (début du timer, nom du projet).
 #[derive(Default)]
@@ -243,7 +245,14 @@ fn icon_for(color: Option<&str>) -> tauri::Result<(Image<'static>, bool)> {
     let base = Image::from_bytes(ICON_IDLE)?;
     let mut rgba = base.rgba().to_vec();
     for px in rgba.chunks_exact_mut(4) {
-        px[3] = (u16::from(px[3]) * 55 / 100) as u8;
+        #[cfg(target_os = "macos")]
+        {
+            px[3] = (u16::from(px[3]) * 55 / 100) as u8;
+        }
+        // Hors macOS, l'indicateur « template » est ignoré : le glyphe noir disparaîtrait
+        // sur une barre des tâches sombre. Un gris moyen, non estompé, reste lisible sur les deux thèmes.
+        #[cfg(not(target_os = "macos"))]
+        px[..3].copy_from_slice(&IDLE_GRAY);
     }
     Ok((Image::new_owned(rgba, base.width(), base.height()), true))
 }
