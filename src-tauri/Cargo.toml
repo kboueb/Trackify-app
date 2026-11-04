@@ -3,6 +3,7 @@ name = "trackify"
 version = "0.1.0"
 description = "Suivi du temps multi-projets"
 edition = "2024"
+authors = ["Kani Bouébassihou"]
 
 [lib]
 name = "trackify_lib"
