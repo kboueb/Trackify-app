@@ -1,5 +1,6 @@
 # Release : à chaque tag v* (ex. v0.2.0), build macOS (universel) et Windows, puis release GitHub publiée
 # avec les installeurs et `latest.json`, que l'app consulte pour proposer la mise à jour.
+# Les vérifications de ci.yml passent d'abord : un échec bloque la publication.
 #
 # Secrets requis (Settings › Secrets and variables › Actions) :
 # - TAURI_SIGNING_PRIVATE_KEY : contenu de ~/.tauri/trackify.key
@@ -14,7 +15,11 @@ permissions:
   contents: write
 
 jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
   build:
+    needs: ci
     strategy:
       fail-fast: false
       matrix:

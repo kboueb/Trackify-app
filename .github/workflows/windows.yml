@@ -1,4 +1,4 @@
-# Build Windows : tests puis installeurs (.msi et .exe NSIS), à chaque push sur main.
+# Build Windows : installeurs (.msi et .exe NSIS), à chaque push sur main. Les tests sont dans ci.yml.
 # Les installeurs sont téléchargeables dans l'onglet Actions (artefact « trackify-windows »).
 # Les versions publiées (tags v*) passent par release.yml.
 name: Windows
@@ -27,13 +27,6 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - run: npm ci
-
-      # Deux étapes : sous PowerShell, l'échec d'une commande au milieu d'un bloc passerait inaperçu.
-      - name: Tests Rust
-        run: cargo test --workspace
-
-      - name: Tests frontend
-        run: npm test
 
       - name: Installeurs
         run: npm run tauri build

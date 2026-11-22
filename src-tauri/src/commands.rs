@@ -223,7 +223,7 @@ pub async fn resolve_idle(
 #[tauri::command]
 #[specta::specta]
 pub fn get_reminder(presence: State<'_, Presence>) -> Option<ReminderView> {
-    presence.current.lock().unwrap().clone()
+    presence.current.lock().clone()
 }
 
 #[tauri::command]
@@ -235,10 +235,10 @@ pub async fn reminder_action(
     action: ReminderAction,
 ) -> AppResult<()> {
     windows::hide_reminder(&app);
-    presence.current.lock().unwrap().take();
+    presence.current.lock().take();
     match action {
         ReminderAction::Dismiss => {}
-        ReminderAction::Later => presence.reminders.lock().unwrap().snooze_no_timer(now_ms() + SNOOZE),
+        ReminderAction::Later => presence.reminders.lock().snooze_no_timer(now_ms() + SNOOZE),
         ReminderAction::Switch => windows::toggle_palette(&app),
         ReminderAction::Stop => {
             timer::stop(&state.db, now_ms()).await?;
@@ -401,11 +401,32 @@ pub async fn backup_now(app: AppHandle, state: State<'_, AppState>) -> AppResult
 /// `None` : revenir au dossier par défaut.
 #[tauri::command]
 #[specta::specta]
-pub async fn set_backup_dir(state: State<'_, AppState>, dir: Option<String>) -> AppResult<Settings> {
+pub async fn set_backup_dir(app: AppHandle, state: State<'_, AppState>, dir: Option<String>) -> AppResult<Settings> {
     let mut current = settings::load(&state.db).await?;
     current.backup_dir = dir.filter(|d| !d.trim().is_empty());
     settings::save(&state.db, &current).await?;
+    backup::remember_dir(&app, &backup::dir(&app, current.backup_dir.as_deref())?);
     Ok(current)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn list_backups(app: AppHandle, state: State<'_, AppState>) -> AppResult<Vec<backup::BackupFile>> {
+    let custom = settings::load(&state.db).await?.backup_dir;
+    Ok(backup::files(&backup::dir(&app, custom.as_deref())?))
+}
+
+/// Vérifie la sauvegarde, la prépare, puis relance l'app : l'échange se fait au démarrage.
+#[tauri::command]
+#[specta::specta]
+pub async fn restore_backup(app: AppHandle, state: State<'_, AppState>, name: String) -> AppResult<()> {
+    let custom = settings::load(&state.db).await?.backup_dir;
+    let path = backup::resolve(&backup::dir(&app, custom.as_deref())?, &name)?;
+    backup::stage_restore(&backup::data_dir(&app)?, &path).await?;
+    // Fermer le pool reporte le journal WAL dans la base : l'ancienne base gardée est complète.
+    state.db.close().await;
+    app.request_restart();
+    Ok(())
 }
 
 #[tauri::command]
@@ -416,3 +437,4 @@ pub async fn reveal_backups(app: AppHandle, state: State<'_, AppState>) -> AppRe
     std::fs::create_dir_all(&dir).map_err(|e| AppError::Internal(e.to_string()))?;
     tauri_plugin_opener::open_path(&dir, None::<&str>).map_err(|e| AppError::Internal(e.to_string()))
 }
+

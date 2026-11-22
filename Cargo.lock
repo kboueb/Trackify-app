@@ -5665,6 +5665,7 @@ version = "0.2.0"
 dependencies = [
  "active-win-pos-rs",
  "chrono",
+ "parking_lot",
  "serde",
  "serde_json",
  "specta",

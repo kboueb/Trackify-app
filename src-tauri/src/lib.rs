@@ -65,6 +65,8 @@ fn specta_builder() -> Builder<tauri::Wry> {
             commands::backup_now,
             commands::set_backup_dir,
             commands::reveal_backups,
+            commands::list_backups,
+            commands::restore_backup,
         ])
         .events(collect_events![
             events::TimerChanged,
@@ -115,8 +117,25 @@ pub fn run() {
 
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir)?;
-            let pool = tauri::async_runtime::block_on(db::open(&dir.join("trackify.db")))?;
-            let mut settings = tauri::async_runtime::block_on(db::settings::load(&pool))?;
+            let stamp = chrono::Local::now().format("%Y-%m-%d-%H%M%S").to_string();
+            match services::backup::apply_pending(&dir, &stamp) {
+                Ok(Some(kept)) => eprintln!("restauration : ancienne base gardée dans {}", kept.display()),
+                Ok(None) => {}
+                Err(e) => eprintln!("restauration impossible : {e}"),
+            }
+            let opened = tauri::async_runtime::block_on(async {
+                let pool = db::open(&dir.join(db::DB_FILE)).await?;
+                let settings = db::settings::load(&pool).await?;
+                Ok::<_, error::AppError>((pool, settings))
+            });
+            let (pool, mut settings) = match opened {
+                Ok(opened) => opened,
+                Err(e) => {
+                    // Ni tray ni fenêtre : seul le dialogue de secours s'affiche.
+                    startup_failure(app.handle(), &dir, e);
+                    return Ok(());
+                }
+            };
 
             // Autostart activé d'office au premier lancement d'une version installée
             // (pas en développement : ça enregistrerait le binaire de debug).
@@ -154,6 +173,53 @@ pub fn run() {
         }
         let _ = (app, event);
     });
+}
+
+/// La base ne s'ouvre pas (fichier corrompu, migration en échec…) : plutôt que de planter
+/// en silence, proposer la dernière sauvegarde intacte, ou au moins dire où sont les données.
+fn startup_failure(app: &tauri::AppHandle, data_dir: &std::path::Path, err: error::AppError) {
+    use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+
+    eprintln!("ouverture de la base : {err}");
+    let dirs = services::backup::fallback_dirs(data_dir);
+    let intro = format!("Trackify n'arrive pas à ouvrir sa base de données.\n\n{err}");
+    let handle = app.clone();
+    match tauri::async_runtime::block_on(services::backup::latest_valid(&dirs)) {
+        Some((path, day)) => {
+            let day = chrono::NaiveDate::parse_from_str(&day, "%Y-%m-%d").map_or(day.clone(), |d| d.format("%d/%m/%Y").to_string());
+            let data_dir = data_dir.to_path_buf();
+            app.dialog()
+                .message(format!(
+                    "{intro}\n\nTu peux restaurer la sauvegarde du {day}. La base actuelle n'est pas supprimée : \
+                     elle est gardée à côté, sous le nom « avant-restauration-… »."
+                ))
+                .title("Base de données illisible")
+                .kind(MessageDialogKind::Error)
+                .buttons(MessageDialogButtons::OkCancelCustom("Restaurer".into(), "Quitter".into()))
+                .show(move |restore| {
+                    if !restore {
+                        return handle.exit(1);
+                    }
+                    match tauri::async_runtime::block_on(services::backup::stage_restore(&data_dir, &path)) {
+                        Ok(()) => handle.request_restart(),
+                        Err(e) => {
+                            eprintln!("restauration : {e}");
+                            handle.exit(1);
+                        }
+                    }
+                });
+        }
+        None => app
+            .dialog()
+            .message(format!(
+                "{intro}\n\nAucune sauvegarde utilisable n'a été trouvée. Tes données sont dans :\n{}",
+                data_dir.display()
+            ))
+            .title("Base de données illisible")
+            .kind(MessageDialogKind::Error)
+            .buttons(MessageDialogButtons::OkCustom("Quitter".into()))
+            .show(move |_| handle.exit(1)),
+    }
 }
 
 #[cfg(test)]

@@ -25,3 +25,6 @@ dist-ssr
 
 # Rust
 /target
+
+# Outils locaux (plugins Claude Code)
+.omc/

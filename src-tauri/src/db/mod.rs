@@ -19,6 +19,9 @@ use crate::error::AppResult;
 
 static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 
+/// Nom du fichier de la base, dans le dossier de données de l'app.
+pub const DB_FILE: &str = "trackify.db";
+
 /// Ouvre (ou crée) la base sur disque et applique les migrations.
 pub async fn open(path: &Path) -> AppResult<SqlitePool> {
     let options = SqliteConnectOptions::new()

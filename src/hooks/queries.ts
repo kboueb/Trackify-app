@@ -141,6 +141,14 @@ export function useBackupNow() {
   return useMutation({ mutationFn: commands.backupNow, onSuccess: () => qc.invalidateQueries({ queryKey: keys.backup }) });
 }
 
+/** Sauvegardes du dossier courant, la plus récente en premier. */
+export function useBackups() {
+  return useQuery({ queryKey: [...keys.backup, "list"], queryFn: commands.listBackups });
+}
+
+/** Ne revient pas en cas de succès : l'app redémarre sur la sauvegarde. */
+export const useRestoreBackup = () => useMutation({ mutationFn: commands.restoreBackup });
+
 export function useSetBackupDir() {
   const qc = useQueryClient();
   return useMutation({
@@ -191,3 +199,4 @@ export function useDataEvents() {
     };
   }, [qc]);
 }
+

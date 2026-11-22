@@ -161,9 +161,11 @@ export function Palette() {
           ))}
         </Command.Group>
 
+        {/* Toujours affiché quand le nom est inconnu : cmdk ne relit les `keywords` d'un élément
+            que si sa `value` change, et filtrerait cette ligne sur la première lettre tapée. */}
         {name && !exists && (
-          <Command.Group heading="Nouveau">
-            <Command.Item value="__create" keywords={[name]} onSelect={() => void createAndStart()}>
+          <Command.Group heading="Nouveau" forceMount>
+            <Command.Item value="__create" forceMount onSelect={() => void createAndStart()}>
               <Plus size={14} />
               <span className="palette-main">Créer « {name} » et démarrer</span>
               <span className="palette-meta">sans client</span>

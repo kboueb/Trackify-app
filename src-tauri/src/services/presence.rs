@@ -3,7 +3,9 @@
 //! La logique de décision vit dans `trackify_core::presence` ; ici on se contente
 //! d'échantillonner (heure, inactivité, timer en cours) et d'appliquer les effets.
 
-use std::{sync::Mutex, time::Duration};
+use std::time::Duration;
+
+use parking_lot::Mutex;
 
 use chrono::{Datelike, Local, Timelike};
 use serde::{Deserialize, Serialize};
@@ -145,12 +147,12 @@ async fn step(app: &AppHandle, tracker: &mut IdleTracker, last_heartbeat: &mut i
     };
     let presence = app.state::<Presence>();
     let day = i64::from(local.date_naive().num_days_from_ce());
-    if presence.reminders.lock().unwrap().review_due(&cfg, day, idle_ms, clock) {
+    if presence.reminders.lock().review_due(&cfg, day, idle_ms, clock) {
         let view = ReminderView { kind: ReminderKind::Review, project_name: None, project_color: None, started_at: None };
         show(app, &presence, view);
         return Ok(());
     }
-    let reminder = presence.reminders.lock().unwrap().tick(
+    let reminder = presence.reminders.lock().tick(
         &cfg,
         now,
         idle_ms,
@@ -176,7 +178,7 @@ async fn step(app: &AppHandle, tracker: &mut IdleTracker, last_heartbeat: &mut i
 }
 
 fn show(app: &AppHandle, presence: &Presence, view: ReminderView) {
-    *presence.current.lock().unwrap() = Some(view);
+    *presence.current.lock() = Some(view);
     let _ = ReminderShown.emit(app);
     windows::show_reminder(app);
 }

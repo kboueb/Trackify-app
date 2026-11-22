@@ -1,0 +1,58 @@
+# Vérifications à chaque push et pull request, sur macOS et Windows.
+# Aussi appelé par release.yml : aucune version n'est publiée si ces vérifications échouent.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_call' }}
+
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - run: npm ci
+
+      # Une commande par étape : sous PowerShell, l'échec d'une commande au milieu d'un bloc passerait inaperçu.
+      - name: Types
+        run: npx tsc --noEmit
+
+      - name: Tests frontend
+        run: npm test
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Tests Rust
+        run: cargo test --workspace
+
+      # `cargo test` régénère src/bindings.ts : un écart veut dire que le fichier commité n'est pas à jour.
+      # Sur macOS seulement : sous Windows, la conversion des fins de ligne fausserait la comparaison.
+      - name: Bindings TypeScript à jour
+        if: runner.os == 'macOS'
+        run: git diff --exit-code -- src/bindings.ts

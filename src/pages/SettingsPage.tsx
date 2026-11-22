@@ -8,6 +8,8 @@ import {
   useAutostart,
   useBackupInfo,
   useBackupNow,
+  useBackups,
+  useRestoreBackup,
   useSetActivityEnabled,
   useSetAutostart,
   useSetBackupDir,
@@ -17,6 +19,7 @@ import {
   useSettings,
 } from "../hooks/queries";
 import { inTauri, installLabel, useAppVersion, useAvailableUpdate, useInstallUpdate } from "../hooks/updater";
+import { backupLabel } from "../lib/backups";
 import { errorMessage } from "../lib/errors";
 import { acceleratorFromEvent, formatAccelerator, hasModifier, isMac } from "../lib/shortcut";
 import { minutesToTime, timeToMinutes } from "../lib/time";
@@ -300,9 +303,47 @@ function BackupSettings() {
               Sauvegarder maintenant
             </button>
           </Row>
+          <RestoreRow />
         </div>
       </div>
     </section>
+  );
+}
+
+function RestoreRow() {
+  const { data: backups = [] } = useBackups();
+  const restore = useRestoreBackup();
+  const [name, setName] = useState("");
+  const chosen = backups.find((b) => b.name === name) ?? backups[0];
+  if (!chosen) return null;
+
+  const hint = restore.error ? (
+    <span className="error">{errorMessage(restore.error)}</span>
+  ) : restore.isPending ? (
+    "Vérification de la sauvegarde, puis redémarrage…"
+  ) : (
+    "Trackify redémarre sur la sauvegarde choisie. La base actuelle n'est pas effacée : elle est gardée à côté."
+  );
+
+  return (
+    <Row label="Restaurer une sauvegarde" hint={hint}>
+      <select
+        className="input"
+        value={chosen.name}
+        disabled={restore.isPending}
+        onChange={(e) => setName(e.target.value)}
+        aria-label="Sauvegarde à restaurer"
+      >
+        {backups.map((b) => (
+          <option key={b.name} value={b.name}>
+            {backupLabel(b)}
+          </option>
+        ))}
+      </select>
+      <ConfirmButton className="btn" label="Restaurer cette sauvegarde" onConfirm={() => restore.mutate(chosen.name)}>
+        Restaurer
+      </ConfirmButton>
+    </Row>
   );
 }
 

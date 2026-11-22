@@ -3,7 +3,9 @@
 //! Le menu est reconstruit à chaque changement (timer, projets) ; le titre
 //! (« Projet · 1:23:45 ») est rafraîchi chaque seconde par une boucle qui ne touche pas la base.
 
-use std::{sync::Mutex, time::Duration};
+use std::time::Duration;
+
+use parking_lot::Mutex;
 
 use tauri::{
     AppHandle, Manager,
@@ -92,7 +94,7 @@ async fn rebuild(app: &AppHandle) -> AppResult<()> {
     let recent = projects::recent(db, RECENT_COUNT).await?;
     let settings = settings::load(db).await?;
     let tracking = settings.activity_enabled;
-    *app.state::<TrayStatus>().title_mode.lock().unwrap() = settings.tray_title;
+    *app.state::<TrayStatus>().title_mode.lock() = settings.tray_title;
 
     let menu = Menu::new(app)?;
     let status = match (&running, &current) {
@@ -133,7 +135,7 @@ async fn rebuild(app: &AppHandle) -> AppResult<()> {
     let status = app.state::<TrayStatus>();
     let color = current.as_ref().map(|p| p.color.clone());
     {
-        let mut shown = status.icon_color.lock().unwrap();
+        let mut shown = status.icon_color.lock();
         if *shown != color
             && let Some(tray) = app.tray_by_id(TRAY_ID)
         {
@@ -143,7 +145,7 @@ async fn rebuild(app: &AppHandle) -> AppResult<()> {
             *shown = color;
         }
     }
-    *status.running.lock().unwrap() = match (running, current) {
+    *status.running.lock() = match (running, current) {
         (Some(e), Some(p)) => Some((e.started_at, truncate(&p.name))),
         _ => None,
     };
@@ -153,11 +155,12 @@ async fn rebuild(app: &AppHandle) -> AppResult<()> {
 
 fn update_title(app: &AppHandle) {
     let status = app.state::<TrayStatus>();
-    let full = match &*status.running.lock().unwrap() {
-        Some((started_at, name)) => Some((name.clone(), format_hms(now_ms() - started_at))),
-        None => None,
-    };
-    let title = match (&full, *status.title_mode.lock().unwrap()) {
+    let full = status
+        .running
+        .lock()
+        .as_ref()
+        .map(|(started_at, name)| (name.clone(), format_hms(now_ms() - started_at)));
+    let title = match (&full, *status.title_mode.lock()) {
         (Some((name, elapsed)), TrayTitle::ProjectAndDuration) => format!("{name} · {elapsed}"),
         (Some((_, elapsed)), TrayTitle::Duration) => elapsed.clone(),
         _ => String::new(),
@@ -167,7 +170,7 @@ fn update_title(app: &AppHandle) {
         Some((name, elapsed)) => format!("Trackify — {name} · {elapsed}"),
         None => "Trackify".to_string(),
     };
-    let mut last = status.last_shown.lock().unwrap();
+    let mut last = status.last_shown.lock();
     if last.0 == title && last.1 == tooltip {
         return;
     }
@@ -236,7 +239,7 @@ fn icon_for(color: Option<&str>) -> tauri::Result<(Image<'static>, bool)> {
         let mut rgba = Vec::with_capacity(bars.rgba().len());
         // Les deux masques ne se chevauchent pas : chaque pixel prend la couleur
         // de celui qui le couvre, avec son alpha (anticrénelage conservé).
-        for (b, d) in bars.rgba().chunks_exact(4).zip(dot.rgba().chunks_exact(4)) {
+        for (b, d) in bars.rgba().as_chunks::<4>().0.iter().zip(dot.rgba().as_chunks::<4>().0) {
             let (rgb, alpha) = if d[3] > b[3] { (DOT_COLOR, d[3]) } else { (project, b[3]) };
             rgba.extend_from_slice(&[rgb[0], rgb[1], rgb[2], alpha]);
         }
@@ -244,7 +247,7 @@ fn icon_for(color: Option<&str>) -> tauri::Result<(Image<'static>, bool)> {
     }
     let base = Image::from_bytes(ICON_IDLE)?;
     let mut rgba = base.rgba().to_vec();
-    for px in rgba.chunks_exact_mut(4) {
+    for px in rgba.as_chunks_mut::<4>().0 {
         #[cfg(target_os = "macos")]
         {
             px[3] = (u16::from(px[3]) * 55 / 100) as u8;

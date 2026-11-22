@@ -53,6 +53,9 @@ export const commands = {
 	/**  `None` : revenir au dossier par défaut. */
 	setBackupDir: (dir: string | null) => __TAURI_INVOKE<Settings>("set_backup_dir", { dir }),
 	revealBackups: () => __TAURI_INVOKE<null>("reveal_backups"),
+	listBackups: () => __TAURI_INVOKE<BackupFile[]>("list_backups"),
+	/**  Vérifie la sauvegarde, la prépare, puis relance l'app : l'échange se fait au démarrage. */
+	restoreBackup: (name: string) => __TAURI_INVOKE<null>("restore_backup", { name }),
 };
 
 /** Events */
@@ -79,6 +82,14 @@ export type ActivityStatus = {
  *  directement affichable.
  */
 export type AppError = { kind: "validation"; message: string } | { kind: "notFound"; message: string } | { kind: "database"; message: string } | { kind: "internal"; message: string };
+
+/**  Sauvegarde proposée à la restauration. */
+export type BackupFile = {
+	name: string,
+	/**  Jour de la sauvegarde, `AAAA-MM-JJ`. */
+	day: string,
+	sizeKb: number,
+};
 
 export type BackupInfo = {
 	dir: string,

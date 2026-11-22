@@ -34,6 +34,7 @@ Tout reste sur l'ordinateur : une base SQLite locale, aucun compte, aucun envoi 
   - UTF-8 avec BOM, séparateur `;`, durée en heures décimales avec une virgule ;
   - une ligne par jour et par projet : `date;projet;client;durée (h);note`.
 - **Sauvegardes** : une copie de la base chaque jour, les 7 dernières gardées. Le dossier est au choix, par exemple sur iCloud Drive.
+  Une sauvegarde se restaure depuis Réglages, et Trackify en propose une d'office si sa base devient illisible.
 
 ## Installation (utilisateur)
 
@@ -75,11 +76,12 @@ Les données sont dans le dossier de l'app :
 
 Ce dossier contient `trackify.db` et le sous-dossier `backups/`.
 
-**Restaurer une sauvegarde :**
-1. Quitte Trackify.
-2. Remplace `trackify.db` par une copie de `backups/trackify-AAAA-MM-JJ.db` renommée en `trackify.db`.
-3. Supprime les fichiers `trackify.db-wal` et `trackify.db-shm` s'ils existent.
-4. Relance Trackify.
+**Restaurer une sauvegarde :** **Réglages › Sauvegardes › Restaurer une sauvegarde**. Choisis le jour, clique sur
+**Restaurer** puis confirme. Trackify vérifie que la sauvegarde est intacte, puis redémarre dessus.
+La base remplacée n'est pas effacée : elle est gardée dans le même dossier, sous le nom `avant-restauration-<date>.db`.
+
+Si la base devient illisible (fichier endommagé, migration en échec), Trackify ne démarre pas en silence :
+il propose de restaurer la dernière sauvegarde intacte, dans le dossier par défaut ou dans le dernier dossier choisi.
 
 ## Mises à jour
 
@@ -116,9 +118,13 @@ Tests :
 
 ```bash
 cargo test --workspace # logique métier (crates/core) et services avec SQLite en mémoire ; régénère aussi src/bindings.ts
-npm test               # fonctions du frontend (vitest)
+cargo clippy --workspace --all-targets -- -D warnings
+npm test               # fonctions et composants du frontend (vitest ; composants sur le faux backend, dans jsdom)
 npx tsc --noEmit       # types
 ```
+
+La CI (`.github/workflows/ci.yml`) lance tout cela sur macOS et Windows à chaque push. Elle vérifie aussi que
+`src/bindings.ts` est à jour. Une release n'est publiée que si elle passe.
 
 ### Construire l'app
 

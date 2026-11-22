@@ -6,7 +6,7 @@
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { emit } from "@tauri-apps/api/event";
 import type { IdlePeriod, Project, ReminderView, ReportRow, Settings, TimeEntry, UnassignedBlock } from "../bindings";
-import { format } from "date-fns";
+import { addDays, format } from "date-fns";
 
 const MIN = 60_000;
 const now = Date.now();
@@ -212,6 +212,15 @@ const handlers: Record<string, (a: Args) => unknown> = {
   backup_now: () => "trackify.db",
   set_backup_dir: ({ dir }) => (settings = { ...settings, backupDir: dir }),
   reveal_backups: () => null,
+  list_backups: () =>
+    [0, 1, 2].map((d) => {
+      const day = format(addDays(now, -d), "yyyy-MM-dd");
+      return { name: `trackify-${day}.db`, day, sizeKb: 84 - d * 3 };
+    }),
+  // Hors de Tauri, impossible de redémarrer : on simule un refus lisible.
+  restore_backup: () => {
+    throw { kind: "internal", message: "Restauration indisponible dans l'aperçu navigateur." };
+  },
   get_reminder: () => reminder,
   reminder_action: () => null,
   hide_palette: () => null,
@@ -231,10 +240,11 @@ const handlers: Record<string, (a: Args) => unknown> = {
 
 export function installMockBackend() {
   mockIPC(
-    (cmd, payload) => {
+    async (cmd, payload) => {
       const handler = handlers[cmd];
       if (!handler) throw new Error(`Commande non simulée : ${cmd}`);
-      return structuredClone(handler((payload ?? {}) as Args));
+      // Copie : l'UI ne doit pas pouvoir muter l'état du faux backend (comme avec le vrai IPC).
+      return structuredClone(await handler((payload ?? {}) as Args));
     },
     { shouldMockEvents: true },
   );
